@@ -3,4 +3,4 @@ target
 *.tar.gz
 tldr-master/
 dist-*/
-frontend/tealdeer-widget/src-tauri/bin/tldr-*
+
