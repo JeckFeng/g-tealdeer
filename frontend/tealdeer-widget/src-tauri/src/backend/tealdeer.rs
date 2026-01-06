@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use log::{debug, info, warn};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -76,6 +77,19 @@ struct RenderOptions {
 pub fn detect_backend(app: AppHandle) -> Result<BackendInfo, String> {
     let (system, sidecar) = resolve_backends(&app);
     let active = system.clone().or(sidecar.clone());
+    let active_kind = active
+        .as_ref()
+        .map(|backend| match backend.kind {
+            BackendKind::System => "system",
+            BackendKind::Sidecar => "sidecar",
+        })
+        .unwrap_or("none");
+    info!("Backend detection: active={active_kind}");
+    debug!(
+        "Backend paths: system={:?}, sidecar={:?}",
+        system.as_ref().map(|backend| backend.path.clone()),
+        sidecar.as_ref().map(|backend| backend.path.clone())
+    );
 
     Ok(BackendInfo {
         system: system.map(BackendResolved::into_info),
@@ -103,6 +117,8 @@ pub fn render_tldr(
     let _ = raw;
     let _ = pager;
     validate_command_tokens(&command_tokens)?;
+    let command = command_tokens.join(" ");
+    info!("Render request: {command}");
 
     let backend = resolve_active_backend(&app)?;
     let options = RenderOptions {
@@ -116,10 +132,15 @@ pub fn render_tldr(
     let output = run_tldr_command(&backend.path, args, DEFAULT_RENDER_TIMEOUT, backend.env())?;
 
     if output.timed_out {
+        warn!("Render timed out: {command}");
         return Err("tldr command timed out".to_string());
     }
 
     if output.status != Some(0) {
+        warn!(
+            "Render failed: {command} status={:?}",
+            output.status
+        );
         return Err(format!(
             "tldr failed with exit code {:?}: {}",
             output.status,
@@ -197,6 +218,7 @@ fn resolve_active_backend<R: Runtime>(app: &AppHandle<R>) -> Result<BackendResol
 pub(crate) fn update_cache_internal<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<RenderResult, String> {
+    info!("Running tldr --update");
     let backend = resolve_active_backend(app)?;
     let output = run_tldr_command(
         &backend.path,
@@ -206,10 +228,12 @@ pub(crate) fn update_cache_internal<R: Runtime>(
     )?;
 
     if output.timed_out {
+        warn!("tldr --update timed out");
         return Err("tldr --update timed out".to_string());
     }
 
     if output.status != Some(0) {
+        warn!("tldr --update failed: {:?}", output.status);
         return Err(format!(
             "tldr --update failed: {}",
             sanitize_err(&output.stderr)

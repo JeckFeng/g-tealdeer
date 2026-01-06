@@ -5,6 +5,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
@@ -86,6 +87,7 @@ pub fn create_or_overwrite_page(
     let path = dir.join(format!("{slug}.page.md"));
     let contents = format_page(&req.command, &req.summary, &req.examples)?;
     write_file(&path, &contents)?;
+    info!("Created custom page: {}", path.display());
 
     Ok(build_info(&path, slug))
 }
@@ -106,6 +108,7 @@ pub fn create_or_overwrite_patch(
     let path = dir.join(format!("{slug}.patch.md"));
     let contents = format_patch(&req.command, &req.examples, req.include_header_in_patch)?;
     write_file(&path, &contents)?;
+    info!("Created custom patch: {}", path.display());
 
     Ok(build_info(&path, slug))
 }
@@ -134,6 +137,7 @@ pub fn append_example_to_page(
     content.push_str("\n\n");
     content.push_str(&block);
     write_file(&path, &content)?;
+    info!("Appended example to page: {}", path.display());
 
     Ok(build_info(&path, slug))
 }
@@ -195,6 +199,7 @@ pub fn scan_custom_pages(app: AppHandle) -> Result<Vec<CustomEntry>, String> {
     }
 
     entries.sort_by(|a, b| a.command_slug.cmp(&b.command_slug));
+    debug!("Scanned {} custom entries", entries.len());
     Ok(entries)
 }
 
@@ -202,6 +207,7 @@ pub fn scan_custom_pages(app: AppHandle) -> Result<Vec<CustomEntry>, String> {
 pub fn delete_custom_file(app: AppHandle, path: String) -> Result<(), String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     fs::remove_file(&target).map_err(|e| format!("Failed to delete file: {e}"))?;
+    info!("Deleted custom file: {}", target.display());
     Ok(())
 }
 
@@ -210,6 +216,7 @@ pub fn disable_custom_file(app: AppHandle, path: String) -> Result<CustomFileInf
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     let new_path = disable_path(&target)?;
     let slug = classification_slug(&file_name_str(&new_path)?)?;
+    info!("Disabled custom file: {}", new_path.display());
     Ok(build_info(&new_path, slug))
 }
 
@@ -218,6 +225,7 @@ pub fn enable_custom_file(app: AppHandle, path: String) -> Result<CustomFileInfo
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     let new_path = enable_path(&target)?;
     let slug = classification_slug(&file_name_str(&new_path)?)?;
+    info!("Enabled custom file: {}", new_path.display());
     Ok(build_info(&new_path, slug))
 }
 

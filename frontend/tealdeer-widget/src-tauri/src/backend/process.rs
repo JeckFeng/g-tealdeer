@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use log::{debug, warn};
 use wait_timeout::ChildExt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +24,11 @@ pub struct ExecOutput {
 }
 
 pub fn run_command(spec: &CommandSpec, timeout: Duration) -> Result<ExecOutput, String> {
+    debug!(
+        "Spawning command: {} {}",
+        spec.program.display(),
+        spec.args.join(" ")
+    );
     let mut command = Command::new(&spec.program);
     command
         .args(&spec.args)
@@ -50,6 +56,13 @@ pub fn run_command(spec: &CommandSpec, timeout: Duration) -> Result<ExecOutput, 
                 .map_err(|e| format!("Failed to wait after kill: {e}"))?
         }
     };
+    if timed_out {
+        warn!(
+            "Command timed out after {:?}: {}",
+            timeout,
+            spec.program.display()
+        );
+    }
 
     let mut stdout = String::new();
     if let Some(mut out) = child.stdout.take() {
@@ -62,6 +75,11 @@ pub fn run_command(spec: &CommandSpec, timeout: Duration) -> Result<ExecOutput, 
         err.read_to_string(&mut stderr)
             .map_err(|e| format!("Failed to read stderr: {e}"))?;
     }
+    debug!(
+        "Command finished: {} status={:?}",
+        spec.program.display(),
+        exit_status.code()
+    );
 
     Ok(ExecOutput {
         status: exit_status.code(),

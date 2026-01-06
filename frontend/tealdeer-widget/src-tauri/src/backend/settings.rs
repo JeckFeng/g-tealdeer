@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 use toml::Value;
@@ -95,6 +96,10 @@ pub fn set_tealdeer_config(
     let active = detect_backend(app.clone())?
         .active
         .ok_or_else(|| "No active backend found.".to_string())?;
+    let active_kind = match active.kind {
+        BackendKind::Sidecar => "sidecar",
+        BackendKind::System => "system",
+    };
 
     let app_settings = read_app_settings(&app)?;
     if matches!(active.kind, BackendKind::System) && !app_settings.allow_system_config_write {
@@ -127,7 +132,14 @@ pub fn set_tealdeer_config(
         set_string(&mut value, &["updates", "archive_source"], archive_source);
     }
 
-    write_toml_value(&path, &value)
+    let result = write_toml_value(&path, &value);
+    if result.is_ok() {
+        info!(
+            "Updated tealdeer config ({active_kind}): {}",
+            path.display()
+        );
+    }
+    result
 }
 
 pub(crate) fn ensure_sidecar_config<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -142,6 +154,7 @@ pub(crate) fn ensure_sidecar_config<R: Runtime>(app: &AppHandle<R>) -> Result<Pa
         set_bool(&mut value, &["display", "use_pager"], false);
     }
     write_toml_value(&config_path, &value)?;
+    debug!("Ensured sidecar config: {}", config_path.display());
 
     Ok(config_dir)
 }
@@ -194,6 +207,11 @@ fn ensure_sidecar_directories<R: Runtime>(
         &["directories", "custom_pages_dir"],
         pages_dir.to_string_lossy().to_string(),
     );
+    debug!(
+        "Ensured sidecar directories: cache={}, pages={}",
+        cache_dir.display(),
+        pages_dir.display()
+    );
     Ok(())
 }
 
@@ -218,7 +236,9 @@ pub(crate) fn write_app_settings<R: Runtime>(
     }
     let payload =
         serde_json::to_string_pretty(settings).map_err(|e| format!("Failed to serialize: {e}"))?;
-    fs::write(&path, payload).map_err(|e| format!("Failed to write settings: {e}"))
+    fs::write(&path, payload).map_err(|e| format!("Failed to write settings: {e}"))?;
+    info!("Saved app settings: {}", path.display());
+    Ok(())
 }
 
 fn app_settings_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {

@@ -1,8 +1,39 @@
 mod backend;
 
+use log::LevelFilter;
+use tauri_plugin_log::{Target, TargetKind, WEBVIEW_TARGET};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let log_level = if cfg!(debug_assertions) {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+    let mut log_targets = Vec::new();
+    log_targets.push(
+        Target::new(TargetKind::LogDir {
+            file_name: Some("rust".into()),
+        })
+        .filter(|metadata| !metadata.target().starts_with(WEBVIEW_TARGET)),
+    );
+    log_targets.push(
+        Target::new(TargetKind::LogDir {
+            file_name: Some("webview".into()),
+        })
+        .filter(|metadata| metadata.target().starts_with(WEBVIEW_TARGET)),
+    );
+    if cfg!(debug_assertions) {
+        log_targets.push(Target::new(TargetKind::Stdout));
+    }
+
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log_level)
+                .targets(log_targets)
+                .build(),
+        )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

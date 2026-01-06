@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { appLogDir, join } from "@tauri-apps/api/path";
+import { error as logError, info as logInfo, warn as logWarn } from "@tauri-apps/plugin-log";
 import { openPath } from "@tauri-apps/plugin-opener";
 import MarkdownIt from "markdown-it";
 
@@ -141,7 +143,12 @@ const settingsAlwaysOnTop = ref(true);
 const allowSystemConfigWrite = ref(false);
 const showPaths = ref<ShowPaths | null>(null);
 const backendInfo = ref<BackendInfo | null>(null);
+const logDir = ref<string | null>(null);
+const logRustPath = ref<string | null>(null);
+const logWebviewPath = ref<string | null>(null);
 let unlistenNavigate: (() => void) | null = null;
+let windowErrorHandler: ((event: ErrorEvent) => void) | null = null;
+let windowRejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null;
 
 const platformOptions = [
   { value: "linux", label: "Linux" },
@@ -241,6 +248,18 @@ function normalizeError(err: unknown): string {
   }
 }
 
+function logUiInfo(message: string) {
+  void logInfo(`[ui] ${message}`).catch(() => {});
+}
+
+function logUiWarn(message: string) {
+  void logWarn(`[ui] ${message}`).catch(() => {});
+}
+
+function logUiError(message: string) {
+  void logError(`[ui] ${message}`).catch(() => {});
+}
+
 function cleanExamples(): ExampleInput[] {
   return examples.value.map((example) => ({
     desc: example.desc.trim(),
@@ -272,6 +291,17 @@ function formatTimestamp(seconds: number): string {
   return new Date(seconds * 1000).toLocaleString();
 }
 
+async function resolveLogPaths() {
+  try {
+    const dir = await appLogDir();
+    logDir.value = dir;
+    logRustPath.value = await join(dir, "rust.log");
+    logWebviewPath.value = await join(dir, "webview.log");
+  } catch (err) {
+    logUiWarn(`Failed to resolve log paths: ${normalizeError(err)}`);
+  }
+}
+
 async function loadManageEntries() {
   manageLoading.value = true;
   manageError.value = "";
@@ -280,6 +310,7 @@ async function loadManageEntries() {
     manageEntries.value = result;
   } catch (err) {
     manageError.value = normalizeError(err);
+    logUiError(`Failed to scan custom pages: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
   }
@@ -297,6 +328,7 @@ async function toggleEntry(entry: CustomEntry) {
     await loadManageEntries();
   } catch (err) {
     manageError.value = normalizeError(err);
+    logUiError(`Failed to update custom entry: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
   }
@@ -316,6 +348,7 @@ async function deleteEntry(entry: CustomEntry) {
     await loadManageEntries();
   } catch (err) {
     manageError.value = normalizeError(err);
+    logUiError(`Failed to delete custom entry: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
   }
@@ -327,6 +360,7 @@ async function openEntry(entry: CustomEntry) {
     await openPath(entry.path);
   } catch (err) {
     manageError.value = normalizeError(err);
+    logUiError(`Failed to open custom entry: ${normalizeError(err)}`);
   }
 }
 
@@ -359,6 +393,7 @@ async function loadSettings() {
     backendInfo.value = backend;
   } catch (err) {
     settingsError.value = normalizeError(err);
+    logUiError(`Failed to load settings: ${normalizeError(err)}`);
   } finally {
     settingsLoading.value = false;
   }
@@ -373,6 +408,7 @@ async function loadAppSettings() {
     settingsAlwaysOnTop.value = appSettings.always_on_top;
   } catch (err) {
     settingsError.value = normalizeError(err);
+    logUiError(`Failed to load app settings: ${normalizeError(err)}`);
   }
 }
 
@@ -407,8 +443,10 @@ async function saveSettings() {
     };
     await invoke("set_tealdeer_config", { patch });
     settingsStatus.value = "Settings saved.";
+    logUiInfo("Settings saved");
   } catch (err) {
     settingsError.value = normalizeError(err);
+    logUiError(`Failed to save settings: ${normalizeError(err)}`);
   } finally {
     settingsLoading.value = false;
   }
@@ -424,7 +462,34 @@ async function openConfigFile() {
     await openPath(showPaths.value.config_path);
   } catch (err) {
     settingsError.value = normalizeError(err);
+    logUiError(`Failed to open config.toml: ${normalizeError(err)}`);
   }
+}
+
+async function openLogPath(path: string | null, label: string) {
+  resetSettingsStatus();
+  if (!path) {
+    settingsError.value = `${label} is not available.`;
+    return;
+  }
+  try {
+    await openPath(path);
+  } catch (err) {
+    settingsError.value = normalizeError(err);
+    logUiError(`Failed to open ${label}: ${normalizeError(err)}`);
+  }
+}
+
+async function openLogDir() {
+  await openLogPath(logDir.value, "Log directory");
+}
+
+async function openRustLog() {
+  await openLogPath(logRustPath.value, "rust.log");
+}
+
+async function openWebviewLog() {
+  await openLogPath(logWebviewPath.value, "webview.log");
 }
 
 async function refreshShowPaths() {
@@ -433,6 +498,7 @@ async function refreshShowPaths() {
     showPaths.value = await invoke<ShowPaths>("get_show_paths");
   } catch (err) {
     settingsError.value = normalizeError(err);
+    logUiError(`Failed to refresh paths: ${normalizeError(err)}`);
   }
 }
 
@@ -448,7 +514,9 @@ async function runSearch() {
   rawOutput.value = "";
 
   try {
-    const tokens = tokenizeCommand(commandInput.value);
+    const command = commandInput.value.trim();
+    const tokens = tokenizeCommand(command);
+    logUiInfo(`Search run: ${command}`);
     const result = await invoke<RenderResult>("render_tldr", {
       commandTokens: tokens,
       language: language.value || null,
@@ -459,10 +527,11 @@ async function runSearch() {
       noAutoUpdate: false,
     });
     rawOutput.value = result.stdout;
-    lastCommand.value = commandInput.value.trim();
+    lastCommand.value = command;
     viewMode.value = "rendered";
   } catch (err) {
     errorMessage.value = normalizeError(err);
+    logUiError(`Search failed: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
   }
@@ -480,7 +549,9 @@ async function runPreview() {
   rawOutput.value = "";
 
   try {
-    const tokens = tokenizeCommand(newCommand.value);
+    const command = newCommand.value.trim();
+    const tokens = tokenizeCommand(command);
+    logUiInfo(`Preview run: ${command}`);
     const result = await invoke<RenderResult>("preview_effective_output", {
       commandTokens: tokens,
       language: language.value || null,
@@ -491,10 +562,11 @@ async function runPreview() {
       noAutoUpdate: false,
     });
     rawOutput.value = result.stdout;
-    lastCommand.value = newCommand.value.trim();
+    lastCommand.value = command;
     viewMode.value = "rendered";
   } catch (err) {
     errorMessage.value = normalizeError(err);
+    logUiError(`Preview failed: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
   }
@@ -522,6 +594,7 @@ async function createCustom() {
         req,
       });
       newStatus.value = `Saved page to ${result.path}`;
+      logUiInfo(`Created custom page: ${command}`);
     } else if (newMode.value === "patch") {
       const req: NewPatchRequest = {
         command,
@@ -532,6 +605,7 @@ async function createCustom() {
         req,
       });
       newStatus.value = `Saved patch to ${result.path}`;
+      logUiInfo(`Created custom patch: ${command}`);
     } else {
       const first = cleanExamples()[0];
       const result = await invoke<CustomFileInfo>("append_example_to_page", {
@@ -539,9 +613,11 @@ async function createCustom() {
         example: first,
       });
       newStatus.value = `Appended example in ${result.path}`;
+      logUiInfo(`Appended example: ${command}`);
     }
   } catch (err) {
     newError.value = normalizeError(err);
+    logUiError(`Failed to create custom content: ${normalizeError(err)}`);
   } finally {
     isCreating.value = false;
   }
@@ -592,6 +668,19 @@ watch(
 
 onMounted(() => {
   loadAppSettings();
+  resolveLogPaths();
+  logUiInfo("UI mounted");
+  windowErrorHandler = (event) => {
+    const location = event.filename
+      ? `${event.filename}:${event.lineno ?? 0}:${event.colno ?? 0}`
+      : "unknown";
+    logUiError(`Window error: ${event.message} (${location})`);
+  };
+  windowRejectionHandler = (event) => {
+    logUiError(`Unhandled rejection: ${normalizeError(event.reason)}`);
+  };
+  window.addEventListener("error", windowErrorHandler);
+  window.addEventListener("unhandledrejection", windowRejectionHandler);
   listen<string>("tray-navigate", (event) => {
     const tab = event.payload;
     if (
@@ -615,6 +704,14 @@ onBeforeUnmount(() => {
   if (unlistenNavigate) {
     unlistenNavigate();
     unlistenNavigate = null;
+  }
+  if (windowErrorHandler) {
+    window.removeEventListener("error", windowErrorHandler);
+    windowErrorHandler = null;
+  }
+  if (windowRejectionHandler) {
+    window.removeEventListener("unhandledrejection", windowRejectionHandler);
+    windowRejectionHandler = null;
   }
 });
 </script>
@@ -1042,6 +1139,15 @@ onBeforeUnmount(() => {
         <button class="ghost" type="button" @click="refreshShowPaths">
           Show paths
         </button>
+        <button class="ghost" type="button" @click="openLogDir" :disabled="!logDir">
+          Open logs folder
+        </button>
+        <button class="ghost" type="button" @click="openRustLog" :disabled="!logRustPath">
+          Open rust.log
+        </button>
+        <button class="ghost" type="button" @click="openWebviewLog" :disabled="!logWebviewPath">
+          Open webview.log
+        </button>
       </div>
 
       <p v-if="!canWriteConfig" class="hint">
@@ -1053,12 +1159,15 @@ onBeforeUnmount(() => {
       </p>
       <p v-if="settingsStatus" class="status-text">{{ settingsStatus }}</p>
 
-      <div v-if="showPaths" class="paths">
-        <div><strong>Config dir:</strong> {{ showPaths.config_dir || "N/A" }}</div>
-        <div><strong>Config path:</strong> {{ showPaths.config_path || "N/A" }}</div>
-        <div><strong>Cache dir:</strong> {{ showPaths.cache_dir || "N/A" }}</div>
-        <div><strong>Pages dir:</strong> {{ showPaths.pages_dir || "N/A" }}</div>
-        <div><strong>Custom pages dir:</strong> {{ showPaths.custom_pages_dir || "N/A" }}</div>
+      <div v-if="showPaths || logDir" class="paths">
+        <div><strong>Config dir:</strong> {{ showPaths?.config_dir || "N/A" }}</div>
+        <div><strong>Config path:</strong> {{ showPaths?.config_path || "N/A" }}</div>
+        <div><strong>Cache dir:</strong> {{ showPaths?.cache_dir || "N/A" }}</div>
+        <div><strong>Pages dir:</strong> {{ showPaths?.pages_dir || "N/A" }}</div>
+        <div><strong>Custom pages dir:</strong> {{ showPaths?.custom_pages_dir || "N/A" }}</div>
+        <div><strong>Log dir:</strong> {{ logDir || "N/A" }}</div>
+        <div><strong>Rust log:</strong> {{ logRustPath || "N/A" }}</div>
+        <div><strong>Webview log:</strong> {{ logWebviewPath || "N/A" }}</div>
       </div>
     </section>
 

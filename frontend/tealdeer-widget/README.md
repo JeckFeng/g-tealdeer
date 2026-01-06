@@ -71,6 +71,12 @@ TEALDEER_TEST_BIN=/usr/bin/tldr cargo test integration_render_tldr_raw
 - Custom pages and patches are written to the configured custom pages directory.
 - Sidecar mode uses isolated config/cache/pages under the app data directory.
 
+## Logging
+- Backend logs: `rust.log` in the app log directory.
+- Frontend logs: `webview.log` in the same directory.
+- Log level is `Debug` in dev builds and `Info` in release builds.
+- Use the Settings page to open the logs folder or jump directly to each log file.
+
 ## FAQ
 **Tray icon not visible on Wayland?** Some compositors hide legacy tray icons. Try KDE Plasma
 or run under X11.

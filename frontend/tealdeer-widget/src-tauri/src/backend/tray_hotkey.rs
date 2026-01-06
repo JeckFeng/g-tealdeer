@@ -1,5 +1,6 @@
 use std::{fs, path::PathBuf};
 
+use log::{info, warn};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
@@ -25,16 +26,16 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let settings = match read_app_settings(app) {
         Ok(settings) => settings,
         Err(err) => {
-            eprintln!("Failed to read app settings: {err}");
+            warn!("Failed to read app settings: {err}");
             AppSettings::default()
         }
     };
 
     if let Err(err) = apply_window_settings(app, &settings) {
-        eprintln!("Failed to apply window settings: {err}");
+        warn!("Failed to apply window settings: {err}");
     }
     if let Err(err) = register_hotkey(app, &settings.hotkey_toggle) {
-        eprintln!("Failed to register global hotkey: {err}");
+        warn!("Failed to register global hotkey: {err}");
     }
 
     setup_tray(app)
@@ -61,7 +62,7 @@ fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .menu(&menu)
         .on_menu_event(|app, event| {
             if let Err(err) = handle_menu_event(app, &event) {
-                eprintln!("Tray menu error: {err}");
+                warn!("Tray menu error: {err}");
             }
         })
         .on_tray_icon_event(|tray, event| {
@@ -80,6 +81,7 @@ fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     builder
         .build(app)
         .map_err(|e| format!("Failed to create tray icon: {e}"))?;
+    info!("Tray icon initialized");
     Ok(())
 }
 
@@ -126,7 +128,7 @@ fn handle_menu_event<R: Runtime>(
             let app = app.clone();
             tauri::async_runtime::spawn_blocking(move || {
                 if let Err(err) = tealdeer::update_cache_internal(&app) {
-                    eprintln!("Cache update failed: {err}");
+                    warn!("Cache update failed: {err}");
                 }
             });
             Ok(())
