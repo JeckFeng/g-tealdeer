@@ -726,11 +726,6 @@ onBeforeUnmount(() => {
           <p>Search and curate tldr pages in a compact Linux window.</p>
         </div>
       </div>
-      <div class="status">
-        <span class="pill">Linux</span>
-        <span class="pill">Tauri v2</span>
-        <span class="pill ghost">Markdown</span>
-      </div>
     </header>
 
     <nav class="tabs">
@@ -835,10 +830,40 @@ onBeforeUnmount(() => {
         <label class="mode">
           <input v-model="newMode" type="radio" value="patch" />
           <span>Patch</span>
+          <span
+            class="hint-icon"
+            role="button"
+            tabindex="0"
+            aria-label="Patch tips"
+            @click.prevent
+            @keydown.enter.prevent
+            @keydown.space.prevent
+          >
+            ?
+          </span>
+          <span class="hint-tooltip">
+            Patch overwrites the existing patch file for the command. Add all examples
+            you want in a single patch submission.
+          </span>
         </label>
         <label class="mode">
           <input v-model="newMode" type="radio" value="append" />
           <span>Append Example</span>
+          <span
+            class="hint-icon"
+            role="button"
+            tabindex="0"
+            aria-label="Append tips"
+            @click.prevent
+            @keydown.enter.prevent
+            @keydown.space.prevent
+          >
+            ?
+          </span>
+          <span class="hint-tooltip">
+            Appends an example to an existing custom page (.page.md). It does not
+            create a patch file.
+          </span>
         </label>
       </div>
 
@@ -1021,11 +1046,6 @@ onBeforeUnmount(() => {
           <h2>Settings</h2>
           <p>Manage tealdeer configuration and app defaults.</p>
         </div>
-        <div class="settings-status">
-          <span v-if="backendInfo?.active" class="pill ghost">
-            Active: {{ backendInfo.active.kind }}
-          </span>
-        </div>
       </div>
 
       <div v-if="settingsError" class="alert">{{ settingsError }}</div>
@@ -1171,7 +1191,10 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="panel output-panel">
+    <section
+      v-if="activeTab === 'search' || activeTab === 'new'"
+      class="panel output-panel"
+    >
       <div class="output-header">
         <div>
           <h2>Output</h2>
@@ -1293,26 +1316,6 @@ h1 {
   color: #54605b;
 }
 
-.status {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pill {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(15, 31, 28, 0.1);
-  color: #0f1f1c;
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.pill.ghost {
-  background: transparent;
-  border: 1px solid rgba(15, 31, 28, 0.2);
-}
-
 .tabs {
   display: inline-flex;
   gap: 8px;
@@ -1424,6 +1427,47 @@ select:focus {
   border: 1px solid rgba(15, 31, 28, 0.12);
   background: #f6f3ee;
   font-weight: 600;
+  position: relative;
+}
+
+.hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 31, 28, 0.25);
+  background: #ffffff;
+  color: #0f1f1c;
+  font-size: 0.75rem;
+  cursor: help;
+}
+
+.hint-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, -4px);
+  width: 240px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #0f1f1c;
+  color: #f8f6f1;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 12px 24px rgba(15, 31, 28, 0.2);
+  z-index: 2;
+}
+
+.hint-icon:hover + .hint-tooltip,
+.hint-icon:focus + .hint-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .manage-panel {
@@ -1716,6 +1760,8 @@ h2 {
   border-radius: 16px;
   padding: 20px;
   min-height: 240px;
+  max-height: 50vh;
+  overflow: auto;
   border: 1px solid rgba(15, 31, 28, 0.08);
 }
 
