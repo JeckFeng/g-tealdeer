@@ -14,7 +14,7 @@ use crate::backend::{
 };
 
 const DEFAULT_RENDER_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_SHOW_PATHS_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_SHOW_PATHS_TIMEOUT: Duration = Duration::from_secs(150);
 const DEFAULT_VERSION_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_UPDATE_TIMEOUT: Duration = Duration::from_secs(20);
 

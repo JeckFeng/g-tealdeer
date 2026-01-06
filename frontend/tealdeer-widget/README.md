@@ -1,4 +1,4 @@
-# Tealdeer Widget (Tauri v2)
+# Tealdeer-Tile (Tauri v2)
 
 This project is a Linux-only Tauri v2 desktop UI for tealdeer (tldr client). The UI runs in a Tauri WebView and the backend is a Rust Tauri command layer.
 

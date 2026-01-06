@@ -20,6 +20,7 @@ pub struct AppSettings {
     pub color: String,
     pub hotkey_toggle: String,
     pub always_on_top: bool,
+    pub theme: String,
 }
 
 impl Default for AppSettings {
@@ -29,6 +30,7 @@ impl Default for AppSettings {
             color: "auto".to_string(),
             hotkey_toggle: "Ctrl+Alt+T".to_string(),
             always_on_top: true,
+            theme: "light".to_string(),
         }
     }
 }

@@ -406,7 +406,7 @@ fn format_example_block(example: &ExampleInput) -> Result<String, String> {
     if desc.is_empty() || cmd.is_empty() {
         return Err("Example description and command are required.".to_string());
     }
-    Ok(format!("- {desc}:\n`{cmd}`\n"))
+    Ok(format!("- {desc}:\n\n`{cmd}`\n"))
 }
 
 fn write_file(path: &Path, contents: &str) -> Result<(), String> {
@@ -596,7 +596,7 @@ mod tests {
         }];
         let content = format_page("git log", "Show commits", &examples).expect("page");
         assert!(content.starts_with("# git log\n> Show commits\n\n"));
-        assert!(content.contains("- List commits:\n`git log`"));
+        assert!(content.contains("- List commits:\n\n`git log`"));
     }
 
     #[test]
@@ -607,7 +607,7 @@ mod tests {
         }];
         let content = format_patch("git log", &examples, true).expect("patch");
         assert!(content.starts_with("# git log (custom patch)\n\n"));
-        assert!(content.contains("- Show last 5:\n`git log -n 5`"));
+        assert!(content.contains("- Show last 5:\n\n`git log -n 5`"));
     }
 
     #[test]
@@ -617,7 +617,7 @@ mod tests {
             cmd: "git tag".to_string(),
         };
         let block = format_example_block(&example).expect("block");
-        assert_eq!(block, "- List tags:\n`git tag`\n");
+        assert_eq!(block, "- List tags:\n\n`git tag`\n");
     }
 
     #[test]

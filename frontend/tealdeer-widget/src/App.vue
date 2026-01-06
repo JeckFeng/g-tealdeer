@@ -6,6 +6,7 @@ import { appLogDir, join } from "@tauri-apps/api/path";
 import { error as logError, info as logInfo, warn as logWarn } from "@tauri-apps/plugin-log";
 import { openPath } from "@tauri-apps/plugin-opener";
 import MarkdownIt from "markdown-it";
+import logoLight from "../static/logo/logo_light.svg";
 
 type RenderResult = {
   stdout: string;
@@ -52,11 +53,14 @@ type BackendInfo = {
   active: BackendBinaryInfo | null;
 };
 
+type ThemeMode = "light" | "dark";
+
 type AppSettings = {
   allow_system_config_write: boolean;
   color: string;
   hotkey_toggle: string;
   always_on_top: boolean;
+  theme: ThemeMode;
 };
 
 type TealdeerConfigValues = {
@@ -133,13 +137,14 @@ const settingsError = ref("");
 const settingsStatus = ref("");
 const settingsLanguages = ref("");
 const settingsPlatforms = ref<string[]>(["linux", "common"]);
-const settingsAutoUpdate = ref(false);
+const settingsDisableAutoUpdate = ref(false);
 const settingsInterval = ref(24);
 const settingsUsePager = ref(false);
 const settingsArchiveSource = ref("");
 const settingsColor = ref("auto");
 const settingsHotkey = ref("Ctrl+Alt+T");
 const settingsAlwaysOnTop = ref(true);
+const theme = ref<ThemeMode>("light");
 const allowSystemConfigWrite = ref(false);
 const showPaths = ref<ShowPaths | null>(null);
 const backendInfo = ref<BackendInfo | null>(null);
@@ -205,6 +210,14 @@ const filteredEntries = computed(() => {
   });
 });
 
+const themeToggleLabel = computed(() =>
+  theme.value === "light" ? "Light" : "Dark",
+);
+const themeToggleTitle = computed(() =>
+  theme.value === "light" ? "Switch to dark theme" : "Switch to light theme",
+);
+const logoSrc = computed(() => logoLight);
+
 const isSystemBackend = computed(
   () => backendInfo.value?.active?.kind === "system",
 );
@@ -258,6 +271,39 @@ function logUiWarn(message: string) {
 
 function logUiError(message: string) {
   void logError(`[ui] ${message}`).catch(() => {});
+}
+
+function normalizeTheme(value: string | null | undefined): ThemeMode {
+  return value === "dark" ? "dark" : "light";
+}
+
+function applyTheme(next: ThemeMode) {
+  theme.value = next;
+  document.documentElement.dataset.theme = next;
+}
+
+function buildAppSettingsPayload(nextTheme?: ThemeMode): AppSettings {
+  return {
+    allow_system_config_write: allowSystemConfigWrite.value,
+    color: settingsColor.value || "auto",
+    hotkey_toggle: settingsHotkey.value.trim(),
+    always_on_top: settingsAlwaysOnTop.value,
+    theme: nextTheme ?? theme.value,
+  };
+}
+
+async function toggleTheme() {
+  const previous = theme.value;
+  const next = previous === "light" ? "dark" : "light";
+  applyTheme(next);
+  try {
+    const payload = buildAppSettingsPayload(next);
+    await invoke("set_app_settings", { settings: payload });
+    logUiInfo(`Theme set to ${next}`);
+  } catch (err) {
+    applyTheme(previous);
+    logUiError(`Failed to save theme: ${normalizeError(err)}`);
+  }
 }
 
 function cleanExamples(): ExampleInput[] {
@@ -379,13 +425,14 @@ async function loadSettings() {
     settingsColor.value = appSettings.color || "auto";
     settingsHotkey.value = appSettings.hotkey_toggle;
     settingsAlwaysOnTop.value = appSettings.always_on_top;
+    applyTheme(normalizeTheme(appSettings.theme));
 
     settingsLanguages.value = configValues.languages.join(", ");
     settingsPlatforms.value =
       configValues.platforms.length > 0
         ? configValues.platforms
         : ["linux", "common"];
-    settingsAutoUpdate.value = configValues.auto_update;
+    settingsDisableAutoUpdate.value = !configValues.auto_update;
     settingsInterval.value = configValues.auto_update_interval_hours ?? 24;
     settingsUsePager.value = configValues.use_pager;
     settingsArchiveSource.value = configValues.archive_source ?? "";
@@ -406,6 +453,7 @@ async function loadAppSettings() {
     settingsColor.value = appSettings.color || "auto";
     settingsHotkey.value = appSettings.hotkey_toggle;
     settingsAlwaysOnTop.value = appSettings.always_on_top;
+    applyTheme(normalizeTheme(appSettings.theme));
   } catch (err) {
     settingsError.value = normalizeError(err);
     logUiError(`Failed to load app settings: ${normalizeError(err)}`);
@@ -417,12 +465,7 @@ async function saveSettings() {
   resetSettingsStatus();
 
   try {
-    const appSettings: AppSettings = {
-      allow_system_config_write: allowSystemConfigWrite.value,
-      color: settingsColor.value || "auto",
-      hotkey_toggle: settingsHotkey.value.trim(),
-      always_on_top: settingsAlwaysOnTop.value,
-    };
+    const appSettings = buildAppSettingsPayload();
     await invoke("set_app_settings", { settings: appSettings });
 
     const languages = parseCsv(settingsLanguages.value);
@@ -434,7 +477,7 @@ async function saveSettings() {
     const patch: TealdeerConfigPatch = {
       languages: languages.length > 0 ? languages : null,
       platforms,
-      auto_update: settingsAutoUpdate.value,
+      auto_update: !settingsDisableAutoUpdate.value,
       auto_update_interval_hours: interval,
       use_pager: settingsUsePager.value,
       archive_source: settingsArchiveSource.value.trim()
@@ -720,11 +763,24 @@ onBeforeUnmount(() => {
   <main class="app">
     <header class="hero">
       <div class="brand">
-        <div class="badge">TLDR</div>
+        <img class="brand-logo" :src="logoSrc" alt="TLDR logo" />
         <div>
-          <h1>Tealdeer Widget</h1>
-          <p>Search and curate tldr pages in a compact Linux window.</p>
+          <h1>Tealdeer-Tile</h1>
+          <p class="subtitle">
+            Write, manage, search—your tealdeer pages, your way.
+          </p>
         </div>
+      </div>
+      <div class="hero-actions">
+        <button
+          class="theme-toggle"
+          type="button"
+          :title="themeToggleTitle"
+          @click="toggleTheme"
+        >
+          <span class="theme-indicator" aria-hidden="true"></span>
+          <span class="theme-label">Theme: {{ themeToggleLabel }}</span>
+        </button>
       </div>
     </header>
 
@@ -1081,8 +1137,8 @@ onBeforeUnmount(() => {
         </div>
 
         <label class="toggle-field">
-          <input v-model="settingsAutoUpdate" type="checkbox" />
-          <span>Auto update cache</span>
+          <input v-model="settingsDisableAutoUpdate" type="checkbox" />
+          <span>关闭自动更新</span>
         </label>
 
         <label class="field">
@@ -1245,11 +1301,125 @@ onBeforeUnmount(() => {
 
 :root {
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  color: #0f1f1c;
-  background-color: #f2f0ea;
+  color: var(--text-primary);
+  background-color: var(--bg);
   line-height: 1.5;
   font-weight: 400;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+  --bg: #cbb9ff;
+  --bg-alt: #f2ecff;
+  --glow-1: rgba(120, 85, 255, 0.25);
+  --glow-2: rgba(204, 176, 255, 0.25);
+  --text-primary: #0f1f1c;
+  --text-muted: #5b6662;
+  --text-muted-strong: #54605b;
+  --text-on-strong: #f8f6f1;
+  --text-on-accent: #ffffff;
+  --panel-bg: #ffffff;
+  --panel-border: rgba(15, 31, 28, 0.08);
+  --panel-shadow: 0 20px 50px rgba(15, 31, 28, 0.08);
+  --input-bg: #f7f2ff;
+  --input-border: rgba(15, 31, 28, 0.12);
+  --chip-bg: #f7f2ff;
+  --chip-border: rgba(15, 31, 28, 0.12);
+  --accent: #2a9d8f;
+  --accent-strong: #0f1f1c;
+  --accent-outline: rgba(42, 157, 143, 0.4);
+  --accent-outline-strong: rgba(42, 157, 143, 0.6);
+  --accent-shadow: 0 12px 24px rgba(42, 157, 143, 0.25);
+  --accent-border: rgba(42, 157, 143, 0.5);
+  --tabs-bg: rgba(15, 31, 28, 0.08);
+  --badge-bg: var(--accent-strong);
+  --badge-text: var(--text-on-strong);
+  --button-ghost-border: rgba(15, 31, 28, 0.16);
+  --button-ghost-bg: #ffffff;
+  --button-ghost-text: #2f3c38;
+  --paths-bg: #f6f1ff;
+  --output-bg: #fdfbff;
+  --output-border: rgba(15, 31, 28, 0.08);
+  --output-toggle-bg: #e9e0ff;
+  --code-inline-bg: rgba(15, 31, 28, 0.08);
+  --code-block-bg: #0f1f1c;
+  --code-block-text: #f8f6f1;
+  --alert-bg: rgba(224, 122, 95, 0.15);
+  --alert-text: #8a3c28;
+  --alert-border: rgba(224, 122, 95, 0.5);
+  --hint-text: #b5533a;
+  --tag-bg: rgba(15, 31, 28, 0.08);
+  --tag-enabled-bg: rgba(42, 157, 143, 0.15);
+  --tag-enabled-text: #1f6f64;
+  --tag-disabled-bg: rgba(224, 122, 95, 0.15);
+  --tag-disabled-text: #8a3c28;
+  --tooltip-bg: #0f1f1c;
+  --tooltip-text: #f8f6f1;
+  --tooltip-shadow: 0 12px 24px rgba(15, 31, 28, 0.2);
+  --hint-icon-bg: #ffffff;
+  --hint-icon-border: rgba(15, 31, 28, 0.25);
+  --hint-icon-text: #0f1f1c;
+  --icon-bg: #ffffff;
+  --icon-border: rgba(15, 31, 28, 0.16);
+  --select-option-bg: #ffffff;
+  --select-option-text: #0f1f1c;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #050608;
+  --bg-alt: #0b1224;
+  --glow-1: rgba(32, 44, 88, 0.35);
+  --glow-2: rgba(12, 20, 46, 0.45);
+  --text-primary: #f4f6f2;
+  --text-muted: #b4c0ba;
+  --text-muted-strong: #c6d2cc;
+  --text-on-strong: #0f1413;
+  --text-on-accent: #0f1413;
+  --panel-bg: #141b2b;
+  --panel-border: rgba(255, 255, 255, 0.1);
+  --panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  --input-bg: #1b2234;
+  --input-border: rgba(255, 255, 255, 0.12);
+  --chip-bg: #1b2234;
+  --chip-border: rgba(255, 255, 255, 0.12);
+  --accent: #5cc2b6;
+  --accent-strong: #f4f6f2;
+  --accent-outline: rgba(92, 194, 182, 0.5);
+  --accent-outline-strong: rgba(92, 194, 182, 0.75);
+  --accent-shadow: 0 12px 24px rgba(92, 194, 182, 0.25);
+  --accent-border: rgba(92, 194, 182, 0.5);
+  --tabs-bg: rgba(255, 255, 255, 0.1);
+  --badge-bg: var(--accent-strong);
+  --badge-text: var(--text-on-strong);
+  --button-ghost-border: rgba(255, 255, 255, 0.18);
+  --button-ghost-bg: #141b2b;
+  --button-ghost-text: #e4ece8;
+  --paths-bg: #1b2234;
+  --output-bg: #0f1524;
+  --output-border: rgba(255, 255, 255, 0.08);
+  --output-toggle-bg: #1b2234;
+  --code-inline-bg: rgba(255, 255, 255, 0.12);
+  --code-block-bg: #0b1010;
+  --code-block-text: #e8f0ed;
+  --alert-bg: rgba(224, 122, 95, 0.25);
+  --alert-text: #f7c1b3;
+  --alert-border: rgba(224, 122, 95, 0.6);
+  --hint-text: #f1a98f;
+  --tag-bg: rgba(255, 255, 255, 0.12);
+  --tag-enabled-bg: rgba(92, 194, 182, 0.2);
+  --tag-enabled-text: #9fe5db;
+  --tag-disabled-bg: rgba(224, 122, 95, 0.25);
+  --tag-disabled-text: #f7c1b3;
+  --tooltip-bg: #101816;
+  --tooltip-text: #f4f6f2;
+  --tooltip-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+  --hint-icon-bg: #1b2234;
+  --hint-icon-border: rgba(255, 255, 255, 0.24);
+  --hint-icon-text: #f4f6f2;
+  --icon-bg: #141b2b;
+  --icon-border: rgba(255, 255, 255, 0.18);
+  --select-option-bg: #1b2234;
+  --select-option-text: #f4f6f2;
 }
 
 * {
@@ -1274,9 +1444,9 @@ select {
   min-height: 100vh;
   padding: 32px clamp(16px, 4vw, 48px) 64px;
   background:
-    radial-gradient(1200px 600px at 0% 0%, rgba(42, 157, 143, 0.15), transparent 60%),
-    radial-gradient(1000px 500px at 100% 0%, rgba(224, 122, 95, 0.15), transparent 60%),
-    linear-gradient(135deg, #f2f0ea 0%, #edf6f6 100%);
+    radial-gradient(1200px 600px at 0% 0%, var(--glow-1), transparent 60%),
+    radial-gradient(1000px 500px at 100% 0%, var(--glow-2), transparent 60%),
+    linear-gradient(135deg, var(--bg) 0%, var(--bg-alt) 100%);
 }
 
 .hero {
@@ -1290,19 +1460,53 @@ select {
 
 .brand {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: center;
 }
 
-.badge {
-  font-family: "Space Grotesk", sans-serif;
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--button-ghost-border);
+  background: var(--button-ghost-bg);
+  color: var(--button-ghost-text);
   font-weight: 600;
-  font-size: 1.1rem;
-  padding: 10px 14px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.theme-toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.theme-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-outline);
+}
+
+.theme-label {
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
+.brand-logo {
+  width: 200px;
+  height: 200px;
   border-radius: 12px;
-  background: #0f1f1c;
-  color: #f8f6f1;
-  letter-spacing: 0.08em;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 h1 {
@@ -1313,14 +1517,18 @@ h1 {
 
 .hero p {
   margin: 4px 0 0;
-  color: #54605b;
+  color: var(--text-muted-strong);
+}
+
+.subtitle {
+  font-size: 0.85rem;
 }
 
 .tabs {
   display: inline-flex;
   gap: 8px;
   padding: 6px;
-  background: rgba(15, 31, 28, 0.08);
+  background: var(--tabs-bg);
   border-radius: 999px;
   margin-bottom: 20px;
 }
@@ -1332,20 +1540,20 @@ h1 {
   border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
-  color: #3a4642;
+  color: var(--text-muted-strong);
 }
 
 .tab.active {
-  background: #0f1f1c;
-  color: #f8f6f1;
+  background: var(--accent-strong);
+  color: var(--text-on-strong);
 }
 
 .panel {
-  background: #ffffff;
+  background: var(--panel-bg);
   border-radius: 20px;
   padding: 24px;
-  border: 1px solid rgba(15, 31, 28, 0.08);
-  box-shadow: 0 20px 50px rgba(15, 31, 28, 0.08);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-shadow);
 }
 
 .form-panel {
@@ -1367,21 +1575,32 @@ h1 {
 
 .field span {
   font-size: 0.9rem;
-  color: #3a4642;
+  color: var(--text-muted-strong);
 }
 
 input[type="text"],
 select {
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 31, 28, 0.16);
-  background: #fdfbf7;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+input[type="text"]::placeholder {
+  color: var(--text-muted);
 }
 
 input[type="text"]:focus,
 select:focus {
-  outline: 2px solid rgba(42, 157, 143, 0.4);
-  border-color: rgba(42, 157, 143, 0.6);
+  outline: 2px solid var(--accent-outline);
+  border-color: var(--accent-outline-strong);
+}
+
+select option,
+select optgroup {
+  background-color: var(--select-option-bg);
+  color: var(--select-option-text);
 }
 
 .row {
@@ -1402,13 +1621,13 @@ select:focus {
   gap: 8px;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 31, 28, 0.12);
-  background: #f6f3ee;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
   font-size: 0.85rem;
 }
 
 .chip input {
-  accent-color: #2a9d8f;
+  accent-color: var(--accent);
 }
 
 .mode-switch {
@@ -1424,8 +1643,8 @@ select:focus {
   gap: 8px;
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 31, 28, 0.12);
-  background: #f6f3ee;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
   font-weight: 600;
   position: relative;
 }
@@ -1437,9 +1656,9 @@ select:focus {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 1px solid rgba(15, 31, 28, 0.25);
-  background: #ffffff;
-  color: #0f1f1c;
+  border: 1px solid var(--hint-icon-border);
+  background: var(--hint-icon-bg);
+  color: var(--hint-icon-text);
   font-size: 0.75rem;
   cursor: help;
 }
@@ -1452,15 +1671,15 @@ select:focus {
   width: 240px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: #0f1f1c;
-  color: #f8f6f1;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
   font-size: 0.8rem;
   line-height: 1.4;
   text-align: left;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease, transform 0.15s ease;
-  box-shadow: 0 12px 24px rgba(15, 31, 28, 0.2);
+  box-shadow: var(--tooltip-shadow);
   z-index: 2;
 }
 
@@ -1491,7 +1710,7 @@ select:focus {
 
 .settings-header p {
   margin: 6px 0 0;
-  color: #5b6662;
+  color: var(--text-muted);
 }
 
 .settings-grid {
@@ -1505,9 +1724,9 @@ select:focus {
   gap: 6px;
   padding: 12px;
   border-radius: 12px;
-  background: #f6f3ee;
+  background: var(--paths-bg);
   font-size: 0.85rem;
-  color: #4f5b57;
+  color: var(--text-muted-strong);
 }
 
 .paths strong {
@@ -1551,8 +1770,8 @@ select:focus {
   gap: 16px;
   padding: 16px;
   border-radius: 16px;
-  border: 1px solid rgba(15, 31, 28, 0.12);
-  background: #fdfbf7;
+  border: 1px solid var(--panel-border);
+  background: var(--output-bg);
 }
 
 .manage-main {
@@ -1571,7 +1790,7 @@ select:focus {
 
 .manage-summary {
   margin: 0;
-  color: #4f5b57;
+  color: var(--text-muted-strong);
 }
 
 .manage-meta {
@@ -1579,26 +1798,27 @@ select:focus {
   flex-wrap: wrap;
   gap: 12px;
   font-size: 0.85rem;
-  color: #5b6662;
+  color: var(--text-muted);
 }
 
 .tag {
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(15, 31, 28, 0.08);
+  background: var(--tag-bg);
+  color: var(--text-muted-strong);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .tag.enabled {
-  background: rgba(42, 157, 143, 0.15);
-  color: #1f6f64;
+  background: var(--tag-enabled-bg);
+  color: var(--tag-enabled-text);
 }
 
 .tag.disabled {
-  background: rgba(224, 122, 95, 0.15);
-  color: #8a3c28;
+  background: var(--tag-disabled-bg);
+  color: var(--tag-disabled-text);
 }
 
 .manage-row-actions {
@@ -1608,8 +1828,8 @@ select:focus {
 }
 
 .danger {
-  border-color: rgba(224, 122, 95, 0.5);
-  color: #8a3c28;
+  border-color: var(--alert-border);
+  color: var(--alert-text);
 }
 
 .toggle-field {
@@ -1617,7 +1837,7 @@ select:focus {
   align-items: center;
   gap: 10px;
   font-weight: 600;
-  color: #3a4642;
+  color: var(--text-muted-strong);
 }
 
 .examples {
@@ -1631,7 +1851,7 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   font-weight: 600;
-  color: #3a4642;
+  color: var(--text-muted-strong);
 }
 
 .example-row {
@@ -1644,8 +1864,8 @@ select:focus {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid rgba(15, 31, 28, 0.16);
-  background: #ffffff;
+  border: 1px solid var(--icon-border);
+  background: var(--icon-bg);
   cursor: pointer;
 }
 
@@ -1667,9 +1887,9 @@ select:focus {
 }
 
 .primary {
-  background: #2a9d8f;
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(42, 157, 143, 0.25);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: var(--accent-shadow);
 }
 
 .primary:hover:not(:disabled) {
@@ -1677,9 +1897,9 @@ select:focus {
 }
 
 .ghost {
-  background: #ffffff;
-  border-color: rgba(15, 31, 28, 0.16);
-  color: #2f3c38;
+  background: var(--button-ghost-bg);
+  border-color: var(--button-ghost-border);
+  color: var(--button-ghost-text);
 }
 
 .ghost:disabled,
@@ -1691,18 +1911,18 @@ select:focus {
 
 .hint {
   font-size: 0.85rem;
-  color: #b5533a;
+  color: var(--hint-text);
 }
 
 .status-text {
   margin: 0;
-  color: #2a9d8f;
+  color: var(--accent);
   font-weight: 600;
 }
 
 .error-text {
   margin: 0;
-  color: #b5533a;
+  color: var(--alert-text);
   font-weight: 600;
 }
 
@@ -1728,13 +1948,13 @@ h2 {
 
 .output-header p {
   margin: 6px 0 0;
-  color: #5b6662;
+  color: var(--text-muted);
   font-size: 0.95rem;
 }
 
 .view-toggle {
   display: flex;
-  background: #f2f0ea;
+  background: var(--output-toggle-bg);
   border-radius: 999px;
   padding: 4px;
   gap: 6px;
@@ -1747,35 +1967,35 @@ h2 {
   border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
-  color: #4a5551;
+  color: var(--text-muted-strong);
 }
 
 .toggle.active {
-  background: #0f1f1c;
-  color: #f8f6f1;
+  background: var(--accent-strong);
+  color: var(--text-on-strong);
 }
 
 .output-body {
-  background: #fdfbf7;
+  background: var(--output-bg);
   border-radius: 16px;
   padding: 20px;
   min-height: 240px;
   max-height: 50vh;
   overflow: auto;
-  border: 1px solid rgba(15, 31, 28, 0.08);
+  border: 1px solid var(--output-border);
 }
 
 .alert {
   padding: 14px 16px;
   border-radius: 12px;
-  background: rgba(224, 122, 95, 0.15);
-  color: #8a3c28;
+  background: var(--alert-bg);
+  color: var(--alert-text);
   font-weight: 500;
 }
 
 .loading,
 .empty {
-  color: #5e6a66;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -1786,8 +2006,8 @@ h2 {
 .markdown blockquote {
   margin: 0 0 12px;
   padding-left: 12px;
-  border-left: 3px solid rgba(42, 157, 143, 0.5);
-  color: #4f5b57;
+  border-left: 3px solid var(--accent-border);
+  color: var(--text-muted-strong);
 }
 
 .markdown ul {
@@ -1805,7 +2025,7 @@ h2 {
 
 .markdown code {
   font-family: "JetBrains Mono", monospace;
-  background: rgba(15, 31, 28, 0.08);
+  background: var(--code-inline-bg);
   padding: 2px 6px;
   border-radius: 6px;
 }
@@ -1813,8 +2033,8 @@ h2 {
 .markdown pre code {
   display: block;
   padding: 12px;
-  background: #0f1f1c;
-  color: #f8f6f1;
+  background: var(--code-block-bg);
+  color: var(--code-block-text);
 }
 
 .raw {
