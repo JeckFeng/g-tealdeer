@@ -477,11 +477,11 @@ pub struct Config<'a> {
 }
 
 impl<'a> Config<'a> {
-    /// Convert a `RawConfig` to a high-level `Config`.
-    ///
-    /// For this, some values need to be converted to other types and some
-    /// defaults need to be set (sometimes based on env variables).
-    fn from_raw(raw_config: &'a RawConfig, config_file_path: PathWithSource) -> Result<Self> {
+    fn from_raw_with_warnings(
+        raw_config: &'a RawConfig,
+        config_file_path: PathWithSource,
+    ) -> Result<(Self, Vec<String>)> {
+        let mut warnings = Vec::new();
         let style = (&raw_config.style).into();
         let display = (&raw_config.display).into();
         let search: SearchConfig<'a> = (&raw_config.search).into();
@@ -512,7 +512,9 @@ impl<'a> Config<'a> {
             // For backwards compatibility reasons, the cache directory can be
             // overridden using an env variable. This is deprecated and will be
             // phased out in the future.
-            eprintln!("Warning: The ${cache_dir_env_var} env variable is deprecated, use the `cache_dir` option in the config file instead.");
+            warnings.push(format!(
+                "Warning: The ${cache_dir_env_var} env variable is deprecated, use the `cache_dir` option in the config file instead."
+            ));
             PathWithSource {
                 path: PathBuf::from(env_var),
                 source: PathSource::EnvVar,
@@ -560,14 +562,17 @@ impl<'a> Config<'a> {
             custom_pages_dir,
         };
 
-        Ok(Self {
-            style,
-            display,
-            updates,
-            directories,
-            search,
-            file_path: config_file_path,
-        })
+        Ok((
+            Self {
+                style,
+                display,
+                updates,
+                directories,
+                search,
+                file_path: config_file_path,
+            },
+            warnings,
+        ))
     }
 }
 
@@ -623,9 +628,9 @@ impl ConfigLoader {
         Self::read_internal(path, true)
     }
 
-    /// Parse the read [`RawConfig`] into a [`Config`].
-    pub fn load(&self) -> Result<Config<'_>> {
-        Config::from_raw(&self.raw, self.path.clone())
+    /// Parse the read [`RawConfig`] into a [`Config`] along with any warnings.
+    pub fn load(&self) -> Result<(Config<'_>, Vec<String>)> {
+        Config::from_raw_with_warnings(&self.raw, self.path.clone())
             .context("Could not process raw config into rich config")
     }
 }
@@ -725,7 +730,7 @@ mod test {
         raw_config.directories.cache_dir = Some("../cache".into());
         raw_config.directories.custom_pages_dir = Some("../custom_pages".into());
 
-        let config = Config::from_raw(
+        let (config, _warnings) = Config::from_raw_with_warnings(
             &raw_config,
             PathWithSource {
                 path: PathBuf::from("/path/to/config/config.toml"),

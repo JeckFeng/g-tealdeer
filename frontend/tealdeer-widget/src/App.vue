@@ -41,22 +41,9 @@ type ShowPaths = {
   custom_pages_dir: string | null;
 };
 
-type BackendBinaryInfo = {
-  kind: "system" | "sidecar";
-  path: string;
-  version: string | null;
-};
-
-type BackendInfo = {
-  system: BackendBinaryInfo | null;
-  sidecar: BackendBinaryInfo | null;
-  active: BackendBinaryInfo | null;
-};
-
 type ThemeMode = "light" | "dark";
 
 type AppSettings = {
-  allow_system_config_write: boolean;
   color: string;
   hotkey_toggle: string;
   always_on_top: boolean;
@@ -145,9 +132,7 @@ const settingsColor = ref("auto");
 const settingsHotkey = ref("Ctrl+Alt+T");
 const settingsAlwaysOnTop = ref(true);
 const theme = ref<ThemeMode>("light");
-const allowSystemConfigWrite = ref(false);
 const showPaths = ref<ShowPaths | null>(null);
-const backendInfo = ref<BackendInfo | null>(null);
 const logDir = ref<string | null>(null);
 const logRustPath = ref<string | null>(null);
 const logWebviewPath = ref<string | null>(null);
@@ -218,13 +203,6 @@ const themeToggleTitle = computed(() =>
 );
 const logoSrc = computed(() => logoLight);
 
-const isSystemBackend = computed(
-  () => backendInfo.value?.active?.kind === "system",
-);
-const canWriteConfig = computed(
-  () => !isSystemBackend.value || allowSystemConfigWrite.value,
-);
-
 const renderedHtml = computed(() => {
   if (!rawOutput.value) {
     return "";
@@ -284,7 +262,6 @@ function applyTheme(next: ThemeMode) {
 
 function buildAppSettingsPayload(nextTheme?: ThemeMode): AppSettings {
   return {
-    allow_system_config_write: allowSystemConfigWrite.value,
     color: settingsColor.value || "auto",
     hotkey_toggle: settingsHotkey.value.trim(),
     always_on_top: settingsAlwaysOnTop.value,
@@ -414,14 +391,12 @@ async function loadSettings() {
   settingsLoading.value = true;
   settingsError.value = "";
   try {
-    const [appSettings, configValues, paths, backend] = await Promise.all([
+    const [appSettings, configValues, paths] = await Promise.all([
       invoke<AppSettings>("get_app_settings"),
       invoke<TealdeerConfigValues>("get_tealdeer_config_values"),
       invoke<ShowPaths>("get_show_paths"),
-      invoke<BackendInfo>("detect_backend"),
     ]);
 
-    allowSystemConfigWrite.value = appSettings.allow_system_config_write;
     settingsColor.value = appSettings.color || "auto";
     settingsHotkey.value = appSettings.hotkey_toggle;
     settingsAlwaysOnTop.value = appSettings.always_on_top;
@@ -437,7 +412,6 @@ async function loadSettings() {
     settingsUsePager.value = configValues.use_pager;
     settingsArchiveSource.value = configValues.archive_source ?? "";
     showPaths.value = paths;
-    backendInfo.value = backend;
   } catch (err) {
     settingsError.value = normalizeError(err);
     logUiError(`Failed to load settings: ${normalizeError(err)}`);
@@ -449,7 +423,6 @@ async function loadSettings() {
 async function loadAppSettings() {
   try {
     const appSettings = await invoke<AppSettings>("get_app_settings");
-    allowSystemConfigWrite.value = appSettings.allow_system_config_write;
     settingsColor.value = appSettings.color || "auto";
     settingsHotkey.value = appSettings.hotkey_toggle;
     settingsAlwaysOnTop.value = appSettings.always_on_top;
@@ -575,6 +548,29 @@ async function runSearch() {
   } catch (err) {
     errorMessage.value = normalizeError(err);
     logUiError(`Search failed: ${normalizeError(err)}`);
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function updateCache() {
+  isLoading.value = true;
+  errorMessage.value = "";
+
+  try {
+    logUiInfo("Starting cache update");
+    const result = await invoke<RenderResult>("update_cache");
+    
+    if (result.status === 0) {
+      logUiInfo("Cache updated successfully");
+      errorMessage.value = "Cache updated successfully!";
+    } else {
+      errorMessage.value = result.stderr || "Update failed";
+      logUiError(`Cache update failed: ${result.stderr}`);
+    }
+  } catch (err) {
+    errorMessage.value = `Update failed: ${normalizeError(err)}`;
+    logUiError(`Cache update error: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
   }
@@ -869,8 +865,14 @@ onBeforeUnmount(() => {
           <button class="ghost" type="button" @click="copyRaw" :disabled="!rawOutput">
             {{ copyLabel }}
           </button>
-          <button class="ghost" type="button" disabled title="Planned for a later stage">
-            Update Cache
+          <button 
+            class="ghost" 
+            type="button" 
+            :disabled="isLoading"
+            @click="updateCache"
+            title="Download latest tldr pages from GitHub"
+          >
+            {{ isLoading ? 'Updating...' : 'Update Cache' }}
           </button>
           <span class="hint" v-if="invalidReason">{{ invalidReason }}</span>
         </div>
@@ -1194,10 +1196,6 @@ onBeforeUnmount(() => {
           <span>Always on top</span>
         </label>
 
-        <label class="toggle-field">
-          <input v-model="allowSystemConfigWrite" type="checkbox" />
-          <span>Allow editing system tealdeer config</span>
-        </label>
       </div>
 
       <div class="actions">
@@ -1205,7 +1203,7 @@ onBeforeUnmount(() => {
           class="primary"
           type="button"
           @click="saveSettings"
-          :disabled="settingsLoading || !canWriteConfig"
+          :disabled="settingsLoading"
         >
           Save Settings
         </button>
@@ -1226,9 +1224,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <p v-if="!canWriteConfig" class="hint">
-        System config is read-only. Enable the toggle above to allow edits.
-      </p>
       <p class="hint">
         Always-on-top can be ignored on some Wayland desktops; disable it if stacking feels
         unstable.

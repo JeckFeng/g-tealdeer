@@ -24,7 +24,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["bin/tldr"],
     "icon": [
       "icons/64x64.png",
       "icons/100x100.png",

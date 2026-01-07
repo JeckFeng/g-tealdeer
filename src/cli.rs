@@ -23,7 +23,7 @@ use crate::types::{ColorOptions, PlatformType};
     help_expected = true,
     group = ArgGroup::new("command_or_file").args(&["command", "render"]),
 )]
-pub(crate) struct Cli {
+pub struct Cli {
     /// The command to show (e.g. `tar` or `git log`)
     #[arg(num_args(1..))]
     pub command: Vec<String>,

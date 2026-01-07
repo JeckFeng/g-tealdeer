@@ -1,6 +1,6 @@
 # Tauri2 开发计划（Tealdeer 可视化常驻工具窗 · Linux）
 
-本文基于《Tealdeer 可视化常驻工具窗（Linux）技术设计稿（Tauri2）》制定，按阶段交付可运行的 MVP。默认 UI 使用 `tldr --raw`，Sidecar 完全隔离（cache/custom pages/config 独立）。
+本文基于《Tealdeer 可视化常驻工具窗（Linux）技术设计稿（Tauri2）》制定，按阶段交付可运行的 MVP。默认 UI 使用 `tldr --raw`，内嵌 tealdeer 引擎，配置与缓存使用应用私有路径。
 
 ---
 
@@ -20,12 +20,12 @@
 ## 阶段 1：后端执行器与安全边界（2–4 天）
 **目标**：Rust 后端可安全调用 tealdeer，完成最小命令执行通路。  
 **任务**：
-- 实现 `backend::tealdeer`：system/sidecar 发现、版本读取、`--show-paths` 解析。
+- 实现 `backend::tealdeer`：内嵌引擎版本读取、`--show-paths` 解析。
 - 统一命令执行：`std::process::Command` + 超时 + stdout/stderr 捕获。
 - 强制默认 `--raw`，禁用 `--pager`（UI 侧不传或后端忽略）。
 - 建立 **Command 安全校验**：包含 `/`、`\` 或 `..` 直接拒绝（用于写文件与执行）。
 **交付物**：
-- Tauri commands：`detect_backend`、`get_show_paths`、`render_tldr`（仅 raw）。
+- Tauri commands：`get_show_paths`、`render_tldr`（仅 raw）。
 - 单元测试：命令校验与执行参数构造。
 **验收**：调用 `render_tldr(["tar"])` 能返回 Markdown 输出。
 
@@ -69,9 +69,9 @@
 ---
 
 ## 阶段 5：Settings 与配置隔离（3–5 天）
-**目标**：可控写入 tealdeer 配置，Sidecar 完全隔离。  
+**目标**：可控写入 tealdeer 配置，应用私有路径隔离。  
 **任务**：
-- System 模式默认只读；Sidecar 模式强制使用 app_data config（`--config-path` 或 `TEALDEER_CONFIG_DIR`）。
+- 仅使用应用私有 config 路径（`--config-path` 或 `TEALDEER_CONFIG_DIR`），不读取系统配置。
 - UI Settings 表单仅覆盖承诺字段（language/platform/auto_update/pager/color/archive_source）。
 - 提供 “Open config.toml / Show paths” 按钮。
 **交付物**：
@@ -95,7 +95,7 @@
 ## 阶段 7：打包、测试与发布准备（3–5 天）
 **目标**：可在 Linux 上稳定打包与回归测试。  
 **任务**：
-- Sidecar 打包：配置 `externalBin`，针对目标三元组产物命名。
+- 内嵌引擎：不使用 `externalBin`，不打包外部可执行文件。
 - 测试计划落实：slug/Markdown/扫描/重命名冲突单测；集成测试调用 `tldr --raw`.
 - 文档补全：用户使用说明、常见问题（Wayland/托盘）。
 **交付物**：

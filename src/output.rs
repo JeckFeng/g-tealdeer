@@ -16,43 +16,47 @@ use crate::{
 ///
 /// SAFETY: this function may be called multiple times
 #[cfg(not(target_os = "windows"))]
-fn configure_pager(_: bool) {
+fn configure_pager() -> Option<&'static str> {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| pager::Pager::with_default_pager("less -R").setup());
+    None
 }
 
 #[cfg(target_os = "windows")]
-fn configure_pager(enable_styles: bool) {
-    use crate::utils::print_warning;
-    print_warning(enable_styles, "--pager flag not available on Windows!");
+fn configure_pager() -> Option<&'static str> {
+    Some("--pager flag not available on Windows!")
 }
 
-/// Print page by path
-pub fn print_page(
+/// Render page content to the provided writer.
+pub fn render_page<W: Write>(
+    writer: &mut W,
     lookup_result: &PageLookupResult,
     enable_markdown: bool,
     enable_styles: bool,
     use_pager: bool,
     config: &Config,
+    mut warn: Option<&mut dyn FnMut(&str)>,
 ) -> Result<()> {
+    let _ = enable_styles;
+
     // Create reader from file(s)
     let reader = lookup_result.reader()?;
 
     // Configure pager if applicable
     if use_pager || config.display.use_pager {
-        configure_pager(enable_styles);
+        if let Some(message) = configure_pager() {
+            if let Some(warn) = warn.as_mut() {
+                warn(message);
+            }
+        }
     }
-
-    // Lock stdout only once, this improves performance considerably
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
 
     if enable_markdown {
         // Print the raw markdown of the file.
         for line in reader.lines() {
             let line = line.context("Error while reading from a page")?;
-            writeln!(handle, "{line}").context("Could not write to stdout")?;
+            writeln!(writer, "{line}").context("Could not write to output")?;
         }
     } else {
         // Closure that processes a page snippet and writes it to stdout
@@ -60,7 +64,7 @@ pub fn print_page(
             if snip.is_empty() {
                 Ok(())
             } else {
-                print_snippet(&mut handle, snip, &config.style).context("Failed to print snippet")
+                print_snippet(writer, snip, &config.style).context("Failed to print snippet")
             }
         };
 
@@ -71,13 +75,35 @@ pub fn print_page(
             !config.display.compact,
             config.display.show_title,
         )
-        .context("Could not write to stdout")?;
+        .context("Could not write to output")?;
     }
 
-    // We're done outputting data, flush stdout now!
-    handle.flush().context("Could not flush stdout")?;
+    // We're done outputting data, flush now!
+    writer.flush().context("Could not flush output")?;
 
     Ok(())
+}
+
+/// Render a page into a String.
+pub fn render_page_to_string(
+    lookup_result: &PageLookupResult,
+    enable_markdown: bool,
+    enable_styles: bool,
+    use_pager: bool,
+    config: &Config,
+    warn: Option<&mut dyn FnMut(&str)>,
+) -> Result<String> {
+    let mut buffer = Vec::new();
+    render_page(
+        &mut buffer,
+        lookup_result,
+        enable_markdown,
+        enable_styles,
+        use_pager,
+        config,
+        warn,
+    )?;
+    String::from_utf8(buffer).context("Output contained invalid UTF-8")
 }
 
 fn print_snippet(

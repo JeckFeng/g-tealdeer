@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs,
     path::{Path, PathBuf},
 };
@@ -8,15 +9,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 use toml::Value;
 
-use crate::backend::{
-    tealdeer::{detect_backend, get_show_paths, BackendKind},
-    tray_hotkey,
-};
+use crate::backend::tray_hotkey;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
-    pub allow_system_config_write: bool,
     pub color: String,
     pub hotkey_toggle: String,
     pub always_on_top: bool,
@@ -26,7 +23,6 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            allow_system_config_write: false,
             color: "auto".to_string(),
             hotkey_toggle: "Ctrl+Alt+T".to_string(),
             always_on_top: true,
@@ -56,29 +52,27 @@ pub struct TealdeerConfigPatch {
 }
 
 #[tauri::command]
-pub fn get_app_settings(app: AppHandle) -> Result<AppSettings, String> {
+pub fn get_app_settings<R: tauri::Runtime>(app: AppHandle<R>) -> Result<AppSettings, String> {
     read_app_settings(&app)
 }
 
 #[tauri::command]
-pub fn set_app_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+pub fn set_app_settings<R: tauri::Runtime>(app: AppHandle<R>, settings: AppSettings) -> Result<(), String> {
     let current = read_app_settings(&app)?;
     tray_hotkey::apply_app_settings(&app, &current, &settings)?;
     write_app_settings(&app, &settings)
 }
 
 #[tauri::command]
-pub fn get_tealdeer_config(app: AppHandle) -> Result<String, String> {
-    let path = resolve_config_path(&app)?;
-    if !path.exists() {
-        return Ok(String::new());
-    }
-    fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {e}"))
+pub fn get_tealdeer_config<R: tauri::Runtime>(app: AppHandle<R>) -> Result<String, String> {
+    let path = ensure_app_config(&app)?;
+    fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read config: {e}"))
 }
 
 #[tauri::command]
-pub fn get_tealdeer_config_values(app: AppHandle) -> Result<TealdeerConfigValues, String> {
-    let path = resolve_config_path(&app)?;
+pub fn get_tealdeer_config_values<R: tauri::Runtime>(app: AppHandle<R>) -> Result<TealdeerConfigValues, String> {
+    let path = ensure_app_config(&app)?;
     let value = read_toml_value(&path)?;
     Ok(TealdeerConfigValues {
         languages: read_string_array(&value, &["search", "languages"]),
@@ -95,25 +89,9 @@ pub fn set_tealdeer_config(
     app: AppHandle,
     patch: TealdeerConfigPatch,
 ) -> Result<(), String> {
-    let active = detect_backend(app.clone())?
-        .active
-        .ok_or_else(|| "No active backend found.".to_string())?;
-    let active_kind = match active.kind {
-        BackendKind::Sidecar => "sidecar",
-        BackendKind::System => "system",
-    };
-
-    let app_settings = read_app_settings(&app)?;
-    if matches!(active.kind, BackendKind::System) && !app_settings.allow_system_config_write {
-        return Err("System tealdeer config is read-only by default.".to_string());
-    }
-
-    let path = resolve_config_path(&app)?;
+    let path = ensure_app_config(&app)?;
     let mut value = read_toml_value(&path)?;
-
-    if matches!(active.kind, BackendKind::Sidecar) {
-        ensure_sidecar_directories(&app, &mut value)?;
-    }
+    ensure_app_directories(&app, &mut value)?;
 
     if let Some(languages) = patch.languages {
         set_string_array(&mut value, &["search", "languages"], languages);
@@ -136,61 +114,40 @@ pub fn set_tealdeer_config(
 
     let result = write_toml_value(&path, &value);
     if result.is_ok() {
-        info!(
-            "Updated tealdeer config ({active_kind}): {}",
-            path.display()
-        );
+        info!("Updated tealdeer config: {}", path.display());
     }
     result
 }
 
-pub(crate) fn ensure_sidecar_config<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let config_dir = sidecar_config_dir(app)?;
+pub(crate) fn ensure_app_config<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let config_dir = app_data_dir(app)?;
     fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create sidecar config dir: {e}"))?;
+        .map_err(|e| format!("Failed to create app config dir: {e}"))?;
     let config_path = config_dir.join("config.toml");
 
     let mut value = read_toml_value(&config_path)?;
-    ensure_sidecar_directories(app, &mut value)?;
+    ensure_app_directories(app, &mut value)?;
     if read_bool(&value, &["display", "use_pager"]).is_none() {
         set_bool(&mut value, &["display", "use_pager"], false);
     }
     write_toml_value(&config_path, &value)?;
-    debug!("Ensured sidecar config: {}", config_path.display());
+    env::set_var("TEALDEER_CONFIG_DIR", &config_dir);
+    debug!("Ensured app config: {}", config_path.display());
 
-    Ok(config_dir)
+    Ok(config_path)
 }
 
-pub(crate) fn sidecar_config_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+pub(crate) fn app_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|_| "Failed to resolve app data dir.".to_string())
 }
 
-fn resolve_config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let backend = detect_backend(app.clone())?
-        .active
-        .ok_or_else(|| "No active backend found.".to_string())?;
-    match backend.kind {
-        BackendKind::Sidecar => {
-            let config_dir = ensure_sidecar_config(app)?;
-            Ok(config_dir.join("config.toml"))
-        }
-        BackendKind::System => {
-            let paths = get_show_paths(app.clone())?;
-            let config_path = paths
-                .config_path
-                .ok_or_else(|| "Config path not available.".to_string())?;
-            Ok(PathBuf::from(config_path))
-        }
-    }
-}
-
-fn ensure_sidecar_directories<R: Runtime>(
+fn ensure_app_directories<R: Runtime>(
     app: &AppHandle<R>,
     value: &mut Value,
 ) -> Result<(), String> {
-    let config_dir = sidecar_config_dir(app)?;
+    let config_dir = app_data_dir(app)?;
     let cache_dir = config_dir.join("cache");
     let pages_dir = config_dir.join("pages");
 
@@ -210,7 +167,7 @@ fn ensure_sidecar_directories<R: Runtime>(
         pages_dir.to_string_lossy().to_string(),
     );
     debug!(
-        "Ensured sidecar directories: cache={}, pages={}",
+        "Ensured app directories: cache={}, pages={}",
         cache_dir.display(),
         pages_dir.display()
     );

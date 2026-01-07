@@ -1,21 +1,19 @@
 use yansi::{Color, Paint};
 
-/// Print a warning to stderr. If `enable_styles` is true, then a yellow
-/// message will be printed.
-pub fn print_warning(enable_styles: bool, message: &str) {
-    print_msg(enable_styles, message, "Warning: ", Color::Yellow);
+/// Format a warning message with optional styles.
+pub fn format_warning(enable_styles: bool, message: &str) -> String {
+    format_msg(enable_styles, message, "Warning: ", Color::Yellow)
 }
 
-/// Print an anyhow error to stderr. If `enable_styles` is true, then a red
-/// message will be printed.
-pub fn print_error(enable_styles: bool, error: &anyhow::Error) {
-    print_msg(enable_styles, &format!("{error:?}"), "Error: ", Color::Red);
+/// Format an anyhow error message with optional styles.
+pub fn format_error(enable_styles: bool, error: &anyhow::Error) -> String {
+    format_msg(enable_styles, &format!("{error:?}"), "Error: ", Color::Red)
 }
 
-fn print_msg(enable_styles: bool, message: &str, prefix: &'static str, color: Color) {
+fn format_msg(enable_styles: bool, message: &str, prefix: &'static str, color: Color) -> String {
     if enable_styles {
-        eprintln!("{}{}", prefix.paint(color), message.paint(color));
+        format!("{}{}", prefix.paint(color), message.paint(color))
     } else {
-        eprintln!("{message}");
+        message.to_string()
     }
 }

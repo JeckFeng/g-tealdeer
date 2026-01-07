@@ -27,16 +27,9 @@ npm run tauri -- dev
 npm run tauri -- build
 ```
 
-## Packaging the Sidecar tealdeer Binary
-This app can bundle a tealdeer sidecar for offline use. The config expects base name `bin/tldr`
-and Tauri resolves per-target variants automatically.
-
-Place binaries in `src-tauri/bin/` using the target-triple suffix:
-
-- `src-tauri/bin/tldr-x86_64-unknown-linux-gnu`
-- `src-tauri/bin/tldr-aarch64-unknown-linux-gnu`
-
-The backend will discover any `tldr*` or `tealdeer*` binary under the resources directory.
+## Embedded tealdeer Engine
+This app links directly to the tealdeer Rust crate from the repo root. It does not
+invoke system-installed `tldr`/`tealdeer` binaries.
 
 ## AppImage Bundling Note (linuxdeploy strip error)
 On some newer Linux distros, linuxdeploy's bundled `strip` fails on libraries that use `.relr.dyn`.
@@ -60,16 +53,10 @@ cd src-tauri
 cargo test
 ```
 
-Optional integration test (requires a working tealdeer binary with cache):
-
-```bash
-TEALDEER_TEST_BIN=/usr/bin/tldr cargo test integration_render_tldr_raw
-```
-
 ## Usage Notes
 - Search uses `tldr --raw` and renders Markdown in the UI.
 - Custom pages and patches are written to the configured custom pages directory.
-- Sidecar mode uses isolated config/cache/pages under the app data directory.
+- The embedded engine uses isolated config/cache/pages under the app data directory.
 
 ## Logging
 - Backend logs: `rust.log` in the app log directory.

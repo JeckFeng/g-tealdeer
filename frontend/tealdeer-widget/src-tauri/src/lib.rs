@@ -37,7 +37,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            backend::tealdeer::detect_backend,
             backend::tealdeer::get_show_paths,
             backend::tealdeer::render_tldr,
             backend::tealdeer::preview_effective_output,

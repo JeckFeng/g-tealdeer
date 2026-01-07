@@ -15,6 +15,10 @@ include = ["/src/**/*", "/tests/**/*", "/Cargo.toml", "/README.md", "/LICENSE-*"
 rust-version = "1.85"
 edition = "2021"
 
+[lib]
+name = "tealdeer"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tldr"
 path = "src/main.rs"

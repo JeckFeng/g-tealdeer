@@ -9,7 +9,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::backend::{
-    settings::{ensure_sidecar_config, read_app_settings, AppSettings},
+    settings::{ensure_app_config, read_app_settings, AppSettings},
     tealdeer,
 };
 
@@ -163,7 +163,10 @@ fn resolve_custom_pages_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, S
             return Ok(PathBuf::from(dir));
         }
     }
-    let config_dir = ensure_sidecar_config(app)?;
+    let config_path = ensure_app_config(app)?;
+    let config_dir = config_path
+        .parent()
+        .ok_or_else(|| "Invalid config path.".to_string())?;
     Ok(config_dir.join("pages"))
 }
 

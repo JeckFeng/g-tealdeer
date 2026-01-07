@@ -9,7 +9,7 @@ use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-use crate::backend::tealdeer::get_show_paths;
+use crate::backend::tealdeer::get_show_paths_internal;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExampleInput {
@@ -71,8 +71,8 @@ struct FileClassification {
 }
 
 #[tauri::command]
-pub fn create_or_overwrite_page(
-    app: AppHandle,
+pub fn create_or_overwrite_page<R: tauri::Runtime>(
+    app: AppHandle<R>,
     req: NewPageRequest,
 ) -> Result<CustomFileInfo, String> {
     validate_command_input(&req.command)?;
@@ -114,8 +114,8 @@ pub fn create_or_overwrite_patch(
 }
 
 #[tauri::command]
-pub fn append_example_to_page(
-    app: AppHandle,
+pub fn append_example_to_page<R: tauri::Runtime>(
+    app: AppHandle<R>,
     command: String,
     example: ExampleInput,
 ) -> Result<CustomFileInfo, String> {
@@ -143,7 +143,7 @@ pub fn append_example_to_page(
 }
 
 #[tauri::command]
-pub fn scan_custom_pages(app: AppHandle) -> Result<Vec<CustomEntry>, String> {
+pub fn scan_custom_pages<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<CustomEntry>, String> {
     let dir = custom_pages_dir(&app)?;
     let dir_entries = match fs::read_dir(&dir) {
         Ok(entries) => entries,
@@ -204,7 +204,7 @@ pub fn scan_custom_pages(app: AppHandle) -> Result<Vec<CustomEntry>, String> {
 }
 
 #[tauri::command]
-pub fn delete_custom_file(app: AppHandle, path: String) -> Result<(), String> {
+pub fn delete_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<(), String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     fs::remove_file(&target).map_err(|e| format!("Failed to delete file: {e}"))?;
     info!("Deleted custom file: {}", target.display());
@@ -212,7 +212,7 @@ pub fn delete_custom_file(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn disable_custom_file(app: AppHandle, path: String) -> Result<CustomFileInfo, String> {
+pub fn disable_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<CustomFileInfo, String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     let new_path = disable_path(&target)?;
     let slug = classification_slug(&file_name_str(&new_path)?)?;
@@ -221,7 +221,7 @@ pub fn disable_custom_file(app: AppHandle, path: String) -> Result<CustomFileInf
 }
 
 #[tauri::command]
-pub fn enable_custom_file(app: AppHandle, path: String) -> Result<CustomFileInfo, String> {
+pub fn enable_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<CustomFileInfo, String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     let new_path = enable_path(&target)?;
     let slug = classification_slug(&file_name_str(&new_path)?)?;
@@ -230,20 +230,20 @@ pub fn enable_custom_file(app: AppHandle, path: String) -> Result<CustomFileInfo
 }
 
 #[tauri::command]
-pub fn read_custom_file(app: AppHandle, path: String) -> Result<String, String> {
+pub fn read_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<String, String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     fs::read_to_string(&target).map_err(|e| format!("Failed to read file: {e}"))
 }
 
-fn custom_pages_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let show_paths = get_show_paths(app.clone())?;
+fn custom_pages_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let show_paths = get_show_paths_internal(app)?;
     let dir = show_paths
         .custom_pages_dir
         .ok_or_else(|| "Custom pages dir is not configured.".to_string())?;
     Ok(PathBuf::from(dir))
 }
 
-fn resolve_existing_path(app: &AppHandle, raw_path: &str) -> Result<(PathBuf, PathBuf), String> {
+fn resolve_existing_path<R: tauri::Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<(PathBuf, PathBuf), String> {
     let dir = custom_pages_dir(app)?;
     let dir_canon = fs::canonicalize(&dir)
         .map_err(|e| format!("Failed to resolve custom pages dir: {e}"))?;
@@ -530,9 +530,121 @@ fn slugify(command: &str) -> Result<String, String> {
 
     let slug = slug.trim_matches('-').to_lowercase();
     if slug.is_empty() {
-        Err("Command resolved to an empty slug.".to_string())
+        return Err("Command resolved to an empty slug.".to_string());
     } else {
-        Ok(slug)
+        return Ok(slug);
+    }
+}
+
+#[cfg(test)]
+mod ui_validation {
+    use super::*;
+    use crate::backend::settings;
+    use crate::backend::tealdeer;
+    use std::fs;
+    use std::path::PathBuf;
+    use tauri::test::mock_app;
+    use tauri::Manager;
+    use tempfile::tempdir;
+
+    fn prepare_app() -> (tauri::App<tauri::test::MockRuntime>, PathBuf) {
+        let temp = tempdir().expect("tempdir");
+        let data_dir = temp.path().join("data");
+        let _ = fs::create_dir_all(&data_dir);
+        std::env::set_var("XDG_DATA_HOME", &data_dir);
+        std::env::set_var("XDG_CONFIG_HOME", temp.path().join("config"));
+        std::env::set_var("XDG_CACHE_HOME", temp.path().join("cache"));
+
+        let app = mock_app();
+        let handle = app.handle().clone();
+        let app_data_dir = handle
+            .path()
+            .app_data_dir()
+            .expect("app_data_dir");
+
+        settings::ensure_app_config(&handle).expect("ensure_app_config");
+        (app, app_data_dir)
+    }
+
+    fn seed_cache(app_data_dir: &PathBuf) -> Result<(), String> {
+        let pages_dir = app_data_dir
+            .join("cache")
+            .join("tldr-pages")
+            .join("pages.en")
+            .join("common");
+        fs::create_dir_all(&pages_dir)
+            .map_err(|e| format!("Failed to create cache dir: {e}"))?;
+        let page = "# tar\n> Archive files\n\n- list:\n`tar -tf archive.tar`\n";
+        fs::write(pages_dir.join("tar.md"), page)
+            .map_err(|e| format!("Failed to write page: {e}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_search_new_manage() {
+        let (app, app_data_dir) = prepare_app();
+        let handle = app.handle().clone();
+        seed_cache(&app_data_dir).expect("seed_cache");
+
+        let render = tealdeer::render_tldr(
+            handle.clone(),
+            vec!["tar".to_string()],
+            None,
+            vec!["linux".to_string(), "common".to_string()],
+            true,
+            Some("never".to_string()),
+            false,
+            true,
+        )
+        .expect("render_tldr");
+        assert!(render.stdout.contains("# tar"));
+
+        let req = NewPageRequest {
+            command: "demo".to_string(),
+            summary: "Demo summary".to_string(),
+            examples: vec![ExampleInput {
+                desc: "Run demo".to_string(),
+                cmd: "demo --help".to_string(),
+            }],
+        };
+        let created = create_or_overwrite_page(handle.clone(), req).expect("create page");
+        assert!(created.path.ends_with("demo.page.md"));
+
+        let entries = scan_custom_pages(handle.clone()).expect("scan_custom_pages");
+        assert!(entries.iter().any(|entry| entry.command_slug == "demo"));
+
+        let disabled = disable_custom_file(handle.clone(), created.path.clone())
+            .expect("disable_custom_file");
+        assert!(disabled.path.ends_with(".disabled"));
+
+        let enabled =
+            enable_custom_file(handle.clone(), disabled.path.clone()).expect("enable_custom_file");
+        assert!(enabled.path.ends_with("demo.page.md"));
+
+        let append = append_example_to_page(
+            handle.clone(),
+            "demo".to_string(),
+            ExampleInput {
+                desc: "Another example".to_string(),
+                cmd: "demo --version".to_string(),
+            },
+        )
+        .expect("append_example_to_page");
+        assert!(append.bytes > 0);
+    }
+
+    #[test]
+    fn validate_update_best_effort() {
+        let (app, _app_data_dir) = prepare_app();
+        let handle = app.handle().clone();
+        match tealdeer::update_cache_internal(&handle) {
+            Ok(result) => {
+                assert!(result.status.unwrap_or(1) == 0);
+            }
+            Err(err) => {
+                eprintln!("Update skipped: {err}");
+            }
+        }
     }
 }
 

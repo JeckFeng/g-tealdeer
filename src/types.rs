@@ -67,6 +67,7 @@ impl clap::ValueEnum for PlatformType {
 
 impl PlatformType {
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn current() -> Self {
         Self::Linux
     }
@@ -162,6 +163,7 @@ impl<'a> From<&'a str> for LineType {
 impl LineType {
     /// Support for old format.
     /// TODO: Remove once old format has been phased out!
+    #[must_use]
     pub fn from_v1(line: &str) -> Self {
         let trimmed = line.trim();
         let mut chars = trimmed.chars();
