@@ -6,7 +6,11 @@ import { appLogDir, join } from "@tauri-apps/api/path";
 import { error as logError, info as logInfo, warn as logWarn } from "@tauri-apps/plugin-log";
 import { openPath } from "@tauri-apps/plugin-opener";
 import MarkdownIt from "markdown-it";
+import { useI18n } from "vue-i18n";
+import { saveLocale } from "./locales";
 import logoLight from "../static/logo/logo_light.svg";
+
+const { t, locale } = useI18n();
 
 type RenderResult = {
   stdout: string;
@@ -100,7 +104,7 @@ const rawOutput = ref("");
 const errorMessage = ref("");
 const isLoading = ref(false);
 const viewMode = ref<"rendered" | "raw">("rendered");
-const copyLabel = ref("Copy");
+const copyLabel = ref(t('search.copy'));
 const lastCommand = ref("");
 
 const newMode = ref<"page" | "patch" | "append">("page");
@@ -110,6 +114,7 @@ const includePatchHeader = ref(false);
 const examples = ref<ExampleInput[]>([{ desc: "", cmd: "" }]);
 const newError = ref("");
 const newStatus = ref("");
+const newStatusType = ref<"success" | "error" | "warning">("success");
 const isCreating = ref(false);
 
 const manageEntries = ref<CustomEntry[]>([]);
@@ -122,6 +127,7 @@ const manageQuery = ref("");
 const settingsLoading = ref(false);
 const settingsError = ref("");
 const settingsStatus = ref("");
+const settingsStatusType = ref<"success" | "error" | "warning">("success");
 const settingsLanguages = ref("");
 const settingsPlatforms = ref<string[]>(["linux", "common"]);
 const settingsDisableAutoUpdate = ref(false);
@@ -293,11 +299,47 @@ function cleanExamples(): ExampleInput[] {
 function resetNewStatus() {
   newError.value = "";
   newStatus.value = "";
+  newStatusType.value = "success";
 }
 
 function resetSettingsStatus() {
   settingsError.value = "";
   settingsStatus.value = "";
+  settingsStatusType.value = "success";
+}
+
+function setSuccessMessage(message: string, target: "new" | "settings") {
+  if (target === "new") {
+    newStatus.value = message;
+    newStatusType.value = "success";
+    newError.value = "";
+    // Auto-hide success messages after 10 seconds
+    setTimeout(() => {
+      if (newStatus.value === message) {
+        newStatus.value = "";
+      }
+    }, 10000);
+  } else {
+    settingsStatus.value = message;
+    settingsStatusType.value = "success";
+    settingsError.value = "";
+    // Auto-hide success messages after 10 seconds
+    setTimeout(() => {
+      if (settingsStatus.value === message) {
+        settingsStatus.value = "";
+      }
+    }, 10000);
+  }
+}
+
+function setErrorMessage(message: string, target: "new" | "settings") {
+  if (target === "new") {
+    newError.value = message;
+    newStatus.value = "";
+  } else {
+    settingsError.value = message;
+    settingsStatus.value = "";
+  }
 }
 
 function parseCsv(value: string): string[] {
@@ -458,10 +500,18 @@ async function saveSettings() {
         : null,
     };
     await invoke("set_tealdeer_config", { patch });
-    settingsStatus.value = "Settings saved.";
+    
+    // Reload paths after saving settings
+    try {
+      showPaths.value = await invoke<ShowPaths>("get_show_paths");
+    } catch (pathErr) {
+      logUiWarn(`Failed to reload paths: ${normalizeError(pathErr)}`);
+    }
+    
+    setSuccessMessage("Settings saved.", "settings");
     logUiInfo("Settings saved");
   } catch (err) {
-    settingsError.value = normalizeError(err);
+    setErrorMessage(normalizeError(err), "settings");
     logUiError(`Failed to save settings: ${normalizeError(err)}`);
   } finally {
     settingsLoading.value = false;
@@ -508,13 +558,19 @@ async function openWebviewLog() {
   await openLogPath(logWebviewPath.value, "webview.log");
 }
 
-async function refreshShowPaths() {
-  resetSettingsStatus();
+async function openCustomDir() {
+  resetNewStatus();
   try {
-    showPaths.value = await invoke<ShowPaths>("get_show_paths");
+    const paths = await invoke<ShowPaths>("get_show_paths");
+    if (!paths.custom_pages_dir) {
+      setErrorMessage("Custom pages directory is not available.", "new");
+      return;
+    }
+    await openPath(paths.custom_pages_dir);
+    logUiInfo("Opened custom pages directory");
   } catch (err) {
-    settingsError.value = normalizeError(err);
-    logUiError(`Failed to refresh paths: ${normalizeError(err)}`);
+    setErrorMessage(normalizeError(err), "new");
+    logUiError(`Failed to open custom pages directory: ${normalizeError(err)}`);
   }
 }
 
@@ -564,6 +620,12 @@ async function updateCache() {
     if (result.status === 0) {
       logUiInfo("Cache updated successfully");
       errorMessage.value = "Cache updated successfully!";
+      // Set success styling for cache update message
+      setTimeout(() => {
+        if (errorMessage.value === "Cache updated successfully!") {
+          errorMessage.value = "";
+        }
+      }, 10000);
     } else {
       errorMessage.value = result.stderr || "Update failed";
       logUiError(`Cache update failed: ${result.stderr}`);
@@ -614,7 +676,7 @@ async function runPreview() {
 async function createCustom() {
   const reason = newInvalidReason.value;
   if (reason) {
-    newError.value = reason;
+    setErrorMessage(reason, "new");
     return;
   }
 
@@ -632,7 +694,7 @@ async function createCustom() {
       const result = await invoke<CustomFileInfo>("create_or_overwrite_page", {
         req,
       });
-      newStatus.value = `Saved page to ${result.path}`;
+      setSuccessMessage(`Saved page to ${result.path}`, "new");
       logUiInfo(`Created custom page: ${command}`);
     } else if (newMode.value === "patch") {
       const req: NewPatchRequest = {
@@ -643,7 +705,7 @@ async function createCustom() {
       const result = await invoke<CustomFileInfo>("create_or_overwrite_patch", {
         req,
       });
-      newStatus.value = `Saved patch to ${result.path}`;
+      setSuccessMessage(`Saved patch to ${result.path}`, "new");
       logUiInfo(`Created custom patch: ${command}`);
     } else {
       const first = cleanExamples()[0];
@@ -651,11 +713,11 @@ async function createCustom() {
         command,
         example: first,
       });
-      newStatus.value = `Appended example in ${result.path}`;
+      setSuccessMessage(`Appended example in ${result.path}`, "new");
       logUiInfo(`Appended example: ${command}`);
     }
   } catch (err) {
-    newError.value = normalizeError(err);
+    setErrorMessage(normalizeError(err), "new");
     logUiError(`Failed to create custom content: ${normalizeError(err)}`);
   } finally {
     isCreating.value = false;
@@ -668,9 +730,9 @@ async function copyRaw() {
   }
   try {
     await navigator.clipboard.writeText(rawOutput.value);
-    copyLabel.value = "Copied";
+    copyLabel.value = t('search.copied');
     setTimeout(() => {
-      copyLabel.value = "Copy";
+      copyLabel.value = t('search.copy');
     }, 1400);
   } catch (err) {
     errorMessage.value = normalizeError(err);
@@ -702,6 +764,14 @@ watch(
     if (value === "settings") {
       loadSettings();
     }
+  },
+);
+
+watch(
+  () => locale.value,
+  (newLocale) => {
+    saveLocale(newLocale);
+    logUiInfo(`Language changed to: ${newLocale}`);
   },
 );
 
@@ -761,9 +831,9 @@ onBeforeUnmount(() => {
       <div class="brand">
         <img class="brand-logo" :src="logoSrc" alt="TLDR logo" />
         <div>
-          <h1>Tealdeer-Tile</h1>
+          <h1>{{ t('app.title') }}</h1>
           <p class="subtitle">
-            Write, manage, search—your tealdeer pages, your way.
+            {{ t('app.subtitle') }}
           </p>
         </div>
       </div>
@@ -775,7 +845,7 @@ onBeforeUnmount(() => {
           @click="toggleTheme"
         >
           <span class="theme-indicator" aria-hidden="true"></span>
-          <span class="theme-label">Theme: {{ themeToggleLabel }}</span>
+          <span class="theme-label">{{ t('theme.label') }}: {{ themeToggleLabel }}</span>
         </button>
       </div>
     </header>
@@ -786,58 +856,63 @@ onBeforeUnmount(() => {
         :class="['tab', { active: activeTab === 'search' }]"
         @click="activeTab = 'search'"
       >
-        Search
+        {{ t('tabs.search') }}
       </button>
       <button
         type="button"
         :class="['tab', { active: activeTab === 'new' }]"
         @click="activeTab = 'new'"
       >
-        New Page
+        {{ t('tabs.newPage') }}
       </button>
       <button
         type="button"
         :class="['tab', { active: activeTab === 'manage' }]"
         @click="activeTab = 'manage'"
       >
-        Manage
+        {{ t('tabs.manage') }}
       </button>
       <button
         type="button"
         :class="['tab', { active: activeTab === 'settings' }]"
         @click="activeTab = 'settings'"
       >
-        Settings
+        {{ t('tabs.settings') }}
       </button>
     </nav>
 
     <section v-if="activeTab === 'search'" class="panel form-panel">
+      <div class="page-header">
+        <h2>{{ t('search.title') }}</h2>
+        <p>{{ t('search.description') }}</p>
+      </div>
+      
       <form class="search-form" @submit.prevent="runSearch">
         <label class="field">
-          <span>Command</span>
+          <span>{{ t('search.command') }}</span>
           <input
             v-model="commandInput"
             type="text"
-            placeholder="git log"
+            :placeholder="t('search.commandPlaceholder')"
             autocomplete="off"
           />
         </label>
 
         <div class="row">
           <label class="field">
-            <span>Language</span>
+            <span>{{ t('search.language') }}</span>
             <select v-model="language">
-              <option value="">Auto</option>
-              <option value="en">English</option>
-              <option value="zh">Chinese</option>
-              <option value="ja">Japanese</option>
-              <option value="de">German</option>
-              <option value="fr">French</option>
+              <option value="">{{ t('common.auto') }}</option>
+              <option value="en">{{ t('common.english') }}</option>
+              <option value="zh">{{ t('common.chinese') }}</option>
+              <option value="ja">{{ t('common.japanese') }}</option>
+              <option value="de">{{ t('common.german') }}</option>
+              <option value="fr">{{ t('common.french') }}</option>
             </select>
           </label>
 
           <div class="field">
-            <span>Platforms</span>
+            <span>{{ t('search.platforms') }}</span>
             <div class="chips">
               <label
                 v-for="platform in platformOptions"
@@ -857,10 +932,10 @@ onBeforeUnmount(() => {
 
         <div class="actions">
           <button class="primary" type="submit" :disabled="isLoading || !!invalidReason">
-            {{ isLoading ? "Running..." : "Run" }}
+            {{ isLoading ? t('search.running') : t('search.run') }}
           </button>
           <button class="ghost" type="button" @click="previewRaw" :disabled="!rawOutput">
-            Preview Raw
+            {{ t('search.previewRaw') }}
           </button>
           <button class="ghost" type="button" @click="copyRaw" :disabled="!rawOutput">
             {{ copyLabel }}
@@ -870,9 +945,9 @@ onBeforeUnmount(() => {
             type="button" 
             :disabled="isLoading"
             @click="updateCache"
-            title="Download latest tldr pages from GitHub"
+            :title="t('search.updateCache')"
           >
-            {{ isLoading ? 'Updating...' : 'Update Cache' }}
+            {{ isLoading ? t('search.updating') : t('search.updateCache') }}
           </button>
           <span class="hint" v-if="invalidReason">{{ invalidReason }}</span>
         </div>
@@ -880,19 +955,24 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else-if="activeTab === 'new'" class="panel form-panel">
+      <div class="page-header">
+        <h2>{{ t('newPage.title') }}</h2>
+        <p>{{ t('newPage.description') }}</p>
+      </div>
+
       <div class="mode-switch">
         <label class="mode">
           <input v-model="newMode" type="radio" value="page" />
-          <span>Custom Page</span>
+          <span>{{ t('newPage.customPage') }}</span>
         </label>
         <label class="mode">
           <input v-model="newMode" type="radio" value="patch" />
-          <span>Patch</span>
+          <span>{{ t('newPage.patch') }}</span>
           <span
             class="hint-icon"
             role="button"
             tabindex="0"
-            aria-label="Patch tips"
+            :aria-label="t('newPage.patchTips')"
             @click.prevent
             @keydown.enter.prevent
             @keydown.space.prevent
@@ -900,18 +980,17 @@ onBeforeUnmount(() => {
             ?
           </span>
           <span class="hint-tooltip">
-            Patch overwrites the existing patch file for the command. Add all examples
-            you want in a single patch submission.
+            {{ t('newPage.patchTooltip') }}
           </span>
         </label>
         <label class="mode">
           <input v-model="newMode" type="radio" value="append" />
-          <span>Append Example</span>
+          <span>{{ t('newPage.appendExample') }}</span>
           <span
             class="hint-icon"
             role="button"
             tabindex="0"
-            aria-label="Append tips"
+            :aria-label="t('newPage.appendTips')"
             @click.prevent
             @keydown.enter.prevent
             @keydown.space.prevent
@@ -919,30 +998,29 @@ onBeforeUnmount(() => {
             ?
           </span>
           <span class="hint-tooltip">
-            Appends an example to an existing custom page (.page.md). It does not
-            create a patch file.
+            {{ t('newPage.appendTooltip') }}
           </span>
         </label>
       </div>
 
       <div class="search-form">
         <label class="field">
-          <span>Command</span>
+          <span>{{ t('newPage.command') }}</span>
           <input
             v-model="newCommand"
             type="text"
-            placeholder="git log"
+            :placeholder="t('search.commandPlaceholder')"
             autocomplete="off"
             @input="resetNewStatus"
           />
         </label>
 
         <label v-if="newMode === 'page'" class="field">
-          <span>Summary</span>
+          <span>{{ t('newPage.summary') }}</span>
           <input
             v-model="summary"
             type="text"
-            placeholder="One line summary"
+            :placeholder="t('newPage.summaryPlaceholder')"
             autocomplete="off"
             @input="resetNewStatus"
           />
@@ -950,19 +1028,19 @@ onBeforeUnmount(() => {
 
         <label v-if="newMode === 'patch'" class="toggle-field">
           <input v-model="includePatchHeader" type="checkbox" />
-          <span>Include header in patch</span>
+          <span>{{ t('newPage.includePatchHeader') }}</span>
         </label>
 
         <div class="examples">
           <div class="examples-header">
-            <span>Examples</span>
+            <span>{{ t('newPage.examples') }}</span>
             <button
               v-if="newMode !== 'append'"
               class="ghost"
               type="button"
               @click="addExample"
             >
-              Add Example
+              {{ t('newPage.addExample') }}
             </button>
           </div>
 
@@ -975,13 +1053,13 @@ onBeforeUnmount(() => {
             <input
               v-model="example.desc"
               type="text"
-              placeholder="Description"
+              :placeholder="t('newPage.descriptionPlaceholder')"
               @input="resetNewStatus"
             />
             <input
               v-model="example.cmd"
               type="text"
-              placeholder="Command"
+              :placeholder="t('newPage.commandPlaceholder')"
               @input="resetNewStatus"
             />
             <button
@@ -1003,7 +1081,7 @@ onBeforeUnmount(() => {
             :disabled="isCreating || !!newInvalidReason"
             @click="createCustom"
           >
-            {{ isCreating ? "Saving..." : "Generate" }}
+            {{ isCreating ? t('newPage.generating') : t('newPage.generate') }}
           </button>
           <button
             class="ghost"
@@ -1011,48 +1089,53 @@ onBeforeUnmount(() => {
             :disabled="isLoading || !!previewInvalidReason"
             @click="runPreview"
           >
-            Preview Effective Output
+            {{ t('newPage.previewOutput') }}
           </button>
-          <button class="ghost" type="button" disabled title="Planned for a later stage">
-            Open Custom Dir
+          <button class="ghost" type="button" @click="openCustomDir">
+            {{ t('newPage.openCustomDir') }}
           </button>
           <span class="hint" v-if="newInvalidReason">{{ newInvalidReason }}</span>
         </div>
 
-        <p v-if="newStatus" class="status-text">{{ newStatus }}</p>
+        <p v-if="newStatus" :class="['status-text', newStatusType]">{{ newStatus }}</p>
         <p v-if="newError" class="error-text">{{ newError }}</p>
       </div>
     </section>
 
     <section v-else-if="activeTab === 'manage'" class="panel manage-panel">
+      <div class="page-header">
+        <h2>{{ t('manage.title') }}</h2>
+        <p>{{ t('manage.description') }}</p>
+      </div>
+
       <div class="manage-controls">
         <label class="field">
-          <span>Type</span>
+          <span>{{ t('manage.type') }}</span>
           <select v-model="manageType">
-            <option value="all">All</option>
-            <option value="page">Page</option>
-            <option value="patch">Patch</option>
+            <option value="all">{{ t('common.all') }}</option>
+            <option value="page">{{ t('common.page') }}</option>
+            <option value="patch">{{ t('common.patch') }}</option>
           </select>
         </label>
         <label class="field">
-          <span>Status</span>
+          <span>{{ t('manage.status') }}</span>
           <select v-model="manageStatus">
-            <option value="all">All</option>
-            <option value="enabled">Enabled</option>
-            <option value="disabled">Disabled</option>
+            <option value="all">{{ t('common.all') }}</option>
+            <option value="enabled">{{ t('common.enabled') }}</option>
+            <option value="disabled">{{ t('common.disabled') }}</option>
           </select>
         </label>
         <label class="field search-field">
-          <span>Search</span>
+          <span>{{ t('manage.search') }}</span>
           <input
             v-model="manageQuery"
             type="text"
-            placeholder="Filter by command or summary"
+            :placeholder="t('manage.searchPlaceholder')"
           />
         </label>
         <div class="manage-actions">
           <button class="ghost" type="button" @click="loadManageEntries">
-            Refresh
+            {{ t('manage.refresh') }}
           </button>
         </div>
       </div>
@@ -1062,10 +1145,10 @@ onBeforeUnmount(() => {
           {{ manageError }}
         </div>
         <div v-else-if="manageLoading" class="loading">
-          Scanning custom pages...
+          {{ t('manage.scanning') }}
         </div>
         <div v-else-if="filteredEntries.length === 0" class="empty">
-          No custom pages found.
+          {{ t('manage.noPages') }}
         </div>
         <div v-else class="manage-list">
           <div v-for="entry in filteredEntries" :key="entry.path" class="manage-row">
@@ -1077,20 +1160,20 @@ onBeforeUnmount(() => {
               </div>
               <p v-if="entry.summary" class="manage-summary">{{ entry.summary }}</p>
               <div class="manage-meta">
-                <span>Slug: {{ entry.command_slug }}</span>
-                <span>Examples: {{ entry.examples_count }}</span>
-                <span>Updated: {{ formatTimestamp(entry.mtime) }}</span>
+                <span>{{ t('manage.slug') }}: {{ entry.command_slug }}</span>
+                <span>{{ t('manage.examples') }}: {{ entry.examples_count }}</span>
+                <span>{{ t('manage.updated') }}: {{ formatTimestamp(entry.mtime) }}</span>
               </div>
             </div>
             <div class="manage-row-actions">
               <button class="ghost" type="button" @click="openEntry(entry)">
-                Open
+                {{ t('manage.open') }}
               </button>
               <button class="ghost" type="button" @click="toggleEntry(entry)">
-                {{ entry.status === "enabled" ? "Disable" : "Enable" }}
+                {{ entry.status === "enabled" ? t('manage.disable') : t('manage.enable') }}
               </button>
               <button class="ghost danger" type="button" @click="deleteEntry(entry)">
-                Delete
+                {{ t('manage.delete') }}
               </button>
             </div>
           </div>
@@ -1101,144 +1184,191 @@ onBeforeUnmount(() => {
     <section v-else class="panel settings-panel">
       <div class="settings-header">
         <div>
-          <h2>Settings</h2>
-          <p>Manage tealdeer configuration and app defaults.</p>
+          <h2>{{ t('settings.title') }}</h2>
+          <p>{{ t('settings.description') }}</p>
         </div>
       </div>
 
-      <div v-if="settingsError" class="alert">{{ settingsError }}</div>
-      <div v-else-if="settingsLoading" class="loading">Loading settings...</div>
+      <div v-if="settingsError" class="alert error">{{ settingsError }}</div>
+      <div v-else-if="settingsLoading" class="loading">{{ t('settings.loadingSettings') }}</div>
 
-      <div v-else class="settings-grid">
-        <label class="field">
-          <span>Languages (comma-separated)</span>
-          <input
-            v-model="settingsLanguages"
-            type="text"
-            placeholder="en, zh"
-            @input="resetSettingsStatus"
-          />
-        </label>
-
-        <div class="field">
-          <span>Platforms</span>
-          <div class="chips">
-            <label
-              v-for="platform in platformOptions"
-              :key="platform.value"
-              class="chip"
-            >
+      <div v-else class="settings-content">
+        <!-- Content Preferences Section -->
+        <div class="settings-section collapsible">
+          <details open>
+            <summary>
+              <h3>{{ t('settings.contentPreferences') }}</h3>
+            </summary>
+            <div class="settings-fields">
+            <label class="field">
+              <span>{{ t('settings.languages') }}</span>
               <input
-                v-model="settingsPlatforms"
-                type="checkbox"
-                :value="platform.value"
+                v-model="settingsLanguages"
+                type="text"
+                :placeholder="t('settings.languagesPlaceholder')"
+                @input="resetSettingsStatus"
               />
-              <span>{{ platform.label }}</span>
             </label>
-          </div>
+
+            <div class="field">
+              <span>{{ t('settings.platforms') }}</span>
+              <div class="chips">
+                <label
+                  v-for="platform in platformOptions"
+                  :key="platform.value"
+                  class="chip"
+                >
+                  <input
+                    v-model="settingsPlatforms"
+                    type="checkbox"
+                    :value="platform.value"
+                  />
+                  <span>{{ platform.label }}</span>
+                </label>
+              </div>
+            </div>
+
+            <label class="toggle-field">
+              <input v-model="settingsDisableAutoUpdate" type="checkbox" />
+              <span>{{ t('settings.disableAutoUpdate') }}</span>
+            </label>
+
+            <label class="field">
+              <span>{{ t('settings.updateInterval') }}</span>
+              <input
+                v-model.number="settingsInterval"
+                type="number"
+                min="1"
+                @input="resetSettingsStatus"
+              />
+            </label>
+
+            <label class="field">
+              <span>{{ t('settings.archiveSource') }}</span>
+              <input
+                v-model="settingsArchiveSource"
+                type="text"
+                :placeholder="t('settings.archiveSourcePlaceholder')"
+                @input="resetSettingsStatus"
+              />
+            </label>
+            </div>
+          </details>
         </div>
 
-        <label class="toggle-field">
-          <input v-model="settingsDisableAutoUpdate" type="checkbox" />
-          <span>关闭自动更新</span>
-        </label>
+        <!-- Display & Interaction Section -->
+        <div class="settings-section collapsible">
+          <details>
+            <summary>
+              <h3>{{ t('settings.displayInteraction') }}</h3>
+            </summary>
+            <div class="settings-fields">
+            <label class="field">
+              <span>{{ t('settings.interfaceLanguage') }}</span>
+              <select v-model="locale">
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+              </select>
+            </label>
 
-        <label class="field">
-          <span>Update interval (hours)</span>
-          <input
-            v-model.number="settingsInterval"
-            type="number"
-            min="1"
-            @input="resetSettingsStatus"
-          />
-        </label>
+            <label class="field">
+              <span>{{ t('settings.outputColor') }}</span>
+              <select v-model="settingsColor">
+                <option value="auto">{{ t('common.auto') }}</option>
+                <option value="always">{{ t('common.always') }}</option>
+                <option value="never">{{ t('common.never') }}</option>
+              </select>
+              <span class="field-hint">{{ t('settings.outputColorHint') }}</span>
+            </label>
 
-        <label class="toggle-field">
-          <input v-model="settingsUsePager" type="checkbox" />
-          <span>Enable pager in tealdeer</span>
-        </label>
+            <label class="toggle-field">
+              <input v-model="settingsUsePager" type="checkbox" />
+              <span>{{ t('settings.enablePager') }}</span>
+            </label>
 
-        <label class="field">
-          <span>Archive source</span>
-          <input
-            v-model="settingsArchiveSource"
-            type="text"
-            placeholder="https://github.com/tldr-pages/tldr/releases/latest/download/"
-            @input="resetSettingsStatus"
-          />
-        </label>
+            <label class="field">
+              <span>{{ t('settings.globalHotkey') }}</span>
+              <input
+                v-model="settingsHotkey"
+                type="text"
+                :placeholder="t('settings.globalHotkeyPlaceholder')"
+                @input="resetSettingsStatus"
+              />
+            </label>
 
-        <label class="field">
-          <span>Output color</span>
-          <select v-model="settingsColor">
-            <option value="auto">Auto</option>
-            <option value="always">Always</option>
-            <option value="never">Never</option>
-          </select>
-        </label>
+            <label class="toggle-field">
+              <input
+                v-model="settingsAlwaysOnTop"
+                type="checkbox"
+                @change="resetSettingsStatus"
+              />
+              <span>{{ t('settings.alwaysOnTop') }}</span>
+            </label>
+            </div>
+          </details>
+        </div>
 
-        <label class="field">
-          <span>Global hotkey (leave blank to disable)</span>
-          <input
-            v-model="settingsHotkey"
-            type="text"
-            placeholder="Ctrl+Alt+T"
-            @input="resetSettingsStatus"
-          />
-        </label>
+        <!-- File Management Section -->
+        <div class="settings-section collapsible">
+          <details>
+            <summary>
+              <h3>{{ t('settings.fileManagement') }}</h3>
+            </summary>
+            <div class="file-actions">
+              <button class="ghost" type="button" @click="openConfigFile">
+                {{ t('settings.openConfig') }}
+              </button>
+              <button class="ghost" type="button" @click="openLogDir" :disabled="!logDir">
+                {{ t('settings.openLogsFolder') }}
+              </button>
+              <button class="ghost" type="button" @click="openRustLog" :disabled="!logRustPath">
+                {{ t('settings.openRustLog') }}
+              </button>
+              <button class="ghost" type="button" @click="openWebviewLog" :disabled="!logWebviewPath">
+                {{ t('settings.openWebviewLog') }}
+              </button>
+            </div>
+          </details>
+        </div>
 
-        <label class="toggle-field">
-          <input
-            v-model="settingsAlwaysOnTop"
-            type="checkbox"
-            @change="resetSettingsStatus"
-          />
-          <span>Always on top</span>
-        </label>
+        <!-- System Information -->
+        <div v-if="showPaths || logDir" class="settings-section collapsible">
+          <details>
+            <summary>
+              <h3>{{ t('settings.systemInfo') }}</h3>
+            </summary>
+            <div class="system-info-grid">
+              <div class="info-item"><strong>{{ t('settings.configDir') }}:</strong> {{ showPaths?.config_dir || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.configPath') }}:</strong> {{ showPaths?.config_path || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.cacheDir') }}:</strong> {{ showPaths?.cache_dir || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.pagesDir') }}:</strong> {{ showPaths?.pages_dir || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.customPagesDir') }}:</strong> {{ showPaths?.custom_pages_dir || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.logDir') }}:</strong> {{ logDir || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.rustLog') }}:</strong> {{ logRustPath || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.webviewLog') }}:</strong> {{ logWebviewPath || "N/A" }}</div>
+            </div>
+          </details>
+        </div>
 
-      </div>
+        <!-- Warnings and Status -->
+        <div class="settings-warnings">
+          <p v-if="settingsAlwaysOnTop" class="hint">
+            {{ t('settings.alwaysOnTopWarning') }}
+          </p>
+          <p v-if="settingsStatus" :class="['status-text', settingsStatusType]">{{ settingsStatus }}</p>
+        </div>
 
-      <div class="actions">
-        <button
-          class="primary"
-          type="button"
-          @click="saveSettings"
-          :disabled="settingsLoading"
-        >
-          Save Settings
-        </button>
-        <button class="ghost" type="button" @click="openConfigFile">
-          Open config.toml
-        </button>
-        <button class="ghost" type="button" @click="refreshShowPaths">
-          Show paths
-        </button>
-        <button class="ghost" type="button" @click="openLogDir" :disabled="!logDir">
-          Open logs folder
-        </button>
-        <button class="ghost" type="button" @click="openRustLog" :disabled="!logRustPath">
-          Open rust.log
-        </button>
-        <button class="ghost" type="button" @click="openWebviewLog" :disabled="!logWebviewPath">
-          Open webview.log
-        </button>
-      </div>
-
-      <p class="hint">
-        Always-on-top can be ignored on some Wayland desktops; disable it if stacking feels
-        unstable.
-      </p>
-      <p v-if="settingsStatus" class="status-text">{{ settingsStatus }}</p>
-
-      <div v-if="showPaths || logDir" class="paths">
-        <div><strong>Config dir:</strong> {{ showPaths?.config_dir || "N/A" }}</div>
-        <div><strong>Config path:</strong> {{ showPaths?.config_path || "N/A" }}</div>
-        <div><strong>Cache dir:</strong> {{ showPaths?.cache_dir || "N/A" }}</div>
-        <div><strong>Pages dir:</strong> {{ showPaths?.pages_dir || "N/A" }}</div>
-        <div><strong>Custom pages dir:</strong> {{ showPaths?.custom_pages_dir || "N/A" }}</div>
-        <div><strong>Log dir:</strong> {{ logDir || "N/A" }}</div>
-        <div><strong>Rust log:</strong> {{ logRustPath || "N/A" }}</div>
-        <div><strong>Webview log:</strong> {{ logWebviewPath || "N/A" }}</div>
+        <!-- Save Button -->
+        <div class="settings-save">
+          <button
+            class="primary save-button"
+            type="button"
+            @click="saveSettings"
+            :disabled="settingsLoading"
+          >
+            {{ settingsLoading ? t('settings.savingButton') : t('settings.saveButton') }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -1248,9 +1378,9 @@ onBeforeUnmount(() => {
     >
       <div class="output-header">
         <div>
-          <h2>Output</h2>
-          <p v-if="lastCommand">Latest: {{ lastCommand }}</p>
-          <p v-else>Run a command to see the rendered page.</p>
+          <h2>{{ t('search.output') }}</h2>
+          <p v-if="lastCommand">{{ t('search.latest') }}: {{ lastCommand }}</p>
+          <p v-else>{{ t('search.runCommand') }}</p>
         </div>
         <div class="view-toggle">
           <button
@@ -1258,27 +1388,27 @@ onBeforeUnmount(() => {
             type="button"
             @click="viewMode = 'rendered'"
           >
-            Rendered
+            {{ t('search.rendered') }}
           </button>
           <button
             :class="['toggle', { active: viewMode === 'raw' }]"
             type="button"
             @click="viewMode = 'raw'"
           >
-            Raw
+            {{ t('search.raw') }}
           </button>
         </div>
       </div>
 
       <div class="output-body">
-        <div v-if="errorMessage" class="alert">
+        <div v-if="errorMessage" :class="['alert', errorMessage.includes('successfully') ? 'success' : 'error']">
           {{ errorMessage }}
         </div>
         <div v-else-if="isLoading" class="loading">
-          Fetching page...
+          {{ t('search.fetching') }}
         </div>
         <div v-else-if="!rawOutput" class="empty">
-          The rendered content will appear here.
+          {{ t('search.runCommand') }}
         </div>
         <div
           v-else-if="viewMode === 'rendered'"
@@ -1341,6 +1471,10 @@ onBeforeUnmount(() => {
   --alert-bg: rgba(224, 122, 95, 0.15);
   --alert-text: #8a3c28;
   --alert-border: rgba(224, 122, 95, 0.5);
+  --success-bg: rgba(42, 157, 143, 0.15);
+  --success-text: #1f6f64;
+  --warning-bg: rgba(255, 193, 7, 0.15);
+  --warning-text: #856404;
   --hint-text: #b5533a;
   --tag-bg: rgba(15, 31, 28, 0.08);
   --tag-enabled-bg: rgba(42, 157, 143, 0.15);
@@ -1399,6 +1533,10 @@ onBeforeUnmount(() => {
   --alert-bg: rgba(224, 122, 95, 0.25);
   --alert-text: #f7c1b3;
   --alert-border: rgba(224, 122, 95, 0.6);
+  --success-bg: rgba(92, 194, 182, 0.2);
+  --success-text: #9fe5db;
+  --warning-bg: rgba(255, 193, 7, 0.25);
+  --warning-text: #ffeaa7;
   --hint-text: #f1a98f;
   --tag-bg: rgba(255, 255, 255, 0.12);
   --tag-enabled-bg: rgba(92, 194, 182, 0.2);
@@ -1573,6 +1711,13 @@ h1 {
   color: var(--text-muted-strong);
 }
 
+.field-hint {
+  font-size: 0.8rem !important;
+  color: var(--text-muted) !important;
+  font-style: italic;
+  margin-top: 4px;
+}
+
 input[type="text"],
 select {
   padding: 12px 14px;
@@ -1696,6 +1841,129 @@ select optgroup {
   gap: 18px;
 }
 
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 8px;
+}
+
+.settings-section.collapsible h3 {
+  border-bottom: none;
+  padding-bottom: 0;
+  font-size: 1rem;
+}
+
+.settings-section.collapsible details {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--input-bg);
+}
+
+.settings-section.collapsible summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.settings-section.collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-section.collapsible summary::before {
+  content: "▶";
+  font-size: 0.8rem;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.settings-section.collapsible details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.file-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.system-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.info-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.info-item strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted-strong);
+  font-weight: 600;
+}
+
+.settings-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-save {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.save-button {
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+.page-header h2 {
+  margin: 0 0 6px 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.3rem;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
 .settings-header {
   display: flex;
   align-items: center;
@@ -1712,6 +1980,13 @@ select optgroup {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+}
+
+.settings-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .paths {
@@ -1911,8 +2186,19 @@ select optgroup {
 
 .status-text {
   margin: 0;
-  color: var(--accent);
   font-weight: 600;
+}
+
+.status-text.success {
+  color: var(--success-text);
+}
+
+.status-text.error {
+  color: var(--alert-text);
+}
+
+.status-text.warning {
+  color: var(--warning-text);
 }
 
 .error-text {
@@ -1983,9 +2269,22 @@ h2 {
 .alert {
   padding: 14px 16px;
   border-radius: 12px;
+  font-weight: 500;
+}
+
+.alert.error {
   background: var(--alert-bg);
   color: var(--alert-text);
-  font-weight: 500;
+}
+
+.alert.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.alert.warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .loading,

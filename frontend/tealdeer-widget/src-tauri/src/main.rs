@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    tealdeer_widget_lib::run()
+    tealdeer_tile_lib::run()
 }
