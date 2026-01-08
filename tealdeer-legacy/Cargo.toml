@@ -1,0 +1,46 @@
+[package]
+name = "tealdeer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Fetch and show tldr help pages for many CLI commands."
+
+[lib]
+name = "tealdeer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tldr"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+app_dirs.workspace = true
+clap.workspace = true
+log.workspace = true
+pager.workspace = true
+serde.workspace = true
+serde_derive.workspace = true
+toml.workspace = true
+ureq.workspace = true
+yansi.workspace = true
+zip.workspace = true
+
+[dependencies.env_logger]
+workspace = true
+optional = true
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+
+[features]
+default = ["rustls-with-webpki-roots"]
+logging = ["env_logger"]
+native-tls = []
+rustls-with-webpki-roots = []
+rustls-with-native-roots = []
