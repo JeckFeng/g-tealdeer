@@ -7,12 +7,14 @@
 本项目采用 Cargo Workspace 架构：
 
 ```
-tealdeer/
+tealdeer/                          # ← Workspace 根目录
 ├── Cargo.toml (Workspace)
 ├── tealdeer-core/ (共享核心库)
 ├── tldr/ (CLI 工具)
 └── frontend/tealdeer-widget/src-tauri/ (GUI 应用)
 ```
+
+**重要**：所有 `cargo` 命令都需要在 **Workspace 根目录**（`tealdeer/`）下执行。
 
 ## 前置要求
 
@@ -37,39 +39,77 @@ tealdeer/
 
 ### 方法 1：构建单个包（推荐）
 
-```bash
-# 进入项目目录
-cd tealdeer
+**在 Workspace 根目录执行**：
 
-# 构建 CLI（debug 版本）
+```bash
+# 1. 进入项目根目录
+cd /path/to/tealdeer          # ← 必须在这里
+
+# 2. 构建 CLI（debug 版本）
 cargo build -p tldr
 
-# 构建 CLI（release 版本）
+# 3. 构建 CLI（release 版本）
 cargo build --release -p tldr
 
-# 二进制文件位置
+# 4. 二进制文件位置
 # Debug: ./target/debug/tldr
 # Release: ./target/release/tldr
 ```
 
+**说明**：
+- `-p tldr` 指定只构建 `tldr` 包
+- 自动编译依赖的 `tealdeer-core`
+- 不编译 GUI 包（节省时间）
+
 ### 方法 2：构建整个 Workspace
 
+**在 Workspace 根目录执行**：
+
 ```bash
-# 构建所有包（包括 CLI 和 GUI）
+# 1. 进入项目根目录
+cd /path/to/tealdeer          # ← 必须在这里
+
+# 2. 构建所有包（包括 CLI 和 GUI）
 cargo build --workspace
 
-# Release 版本
+# 3. Release 版本
 cargo build --workspace --release
 ```
 
+**说明**：
+- 编译所有 workspace 成员
+- 包括 `tealdeer-core`、`tldr`、`tealdeer_tile`
+- 适合 CI/CD 验证
+
 ### 方法 3：直接安装
 
+**在 Workspace 根目录执行**：
+
 ```bash
-# 从项目目录安装
+# 1. 进入项目根目录
+cd /path/to/tealdeer          # ← 必须在这里
+
+# 2. 安装到 ~/.cargo/bin/
 cargo install --path tldr
 
-# 安装到 ~/.cargo/bin/tldr
+# 3. 验证安装
+tldr --version                # ← 可以在任何目录执行
 ```
+
+**说明**：
+- 自动编译 release 版本
+- 安装到 `~/.cargo/bin/tldr`
+- 可以在任何目录直接使用 `tldr` 命令
+
+## 三种方法的区别
+
+| 方法 | 命令 | 编译内容 | 编译时间 | 适用场景 |
+|------|------|---------|---------|---------|
+| 单个包 | `cargo build -p tldr` | 只编译 CLI | ~1秒 | 开发 CLI |
+| Workspace | `cargo build --workspace` | 编译所有包 | ~90秒 | CI/CD 验证 |
+| 安装 | `cargo install --path tldr` | 编译并安装 | ~10秒 | 日常使用 |
+
+**执行路径**：所有命令都必须在 **Workspace 根目录**（`tealdeer/`）执行。
 
 ## 构建选项
 
@@ -77,21 +117,23 @@ cargo install --path tldr
 
 CLI 支持以下 features：
 
-- `default`：默认启用 rustls-with-webpki-roots
-- `logging`：启用日志功能
-- `native-tls`：使用系统原生 TLS
-- `rustls-with-webpki-roots`：使用 rustls + webpki 根证书
-- `rustls-with-native-roots`：使用 rustls + 系统根证书
-
-示例：
-
 ```bash
+# 在 Workspace 根目录执行
+cd /path/to/tealdeer
+
 # 启用日志功能
 cargo build --release -p tldr --features logging
 
 # 使用原生 TLS
 cargo build --release -p tldr --no-default-features --features native-tls
 ```
+
+**可用 features**：
+- `default`：默认启用 rustls-with-webpki-roots
+- `logging`：启用日志功能
+- `native-tls`：使用系统原生 TLS
+- `rustls-with-webpki-roots`：使用 rustls + webpki 根证书
+- `rustls-with-native-roots`：使用 rustls + 系统根证书
 
 ## 编译时间和大小
 
@@ -106,27 +148,37 @@ cargo build --release -p tldr --no-default-features --features native-tls
 
 ## 优化二进制大小
 
+**在 Workspace 根目录执行**：
+
 ```bash
-# 编译 release 版本
+# 1. 进入项目根目录
+cd /path/to/tealdeer
+
+# 2. 编译 release 版本
 cargo build --release -p tldr
 
-# 使用 strip 移除调试符号
+# 3. 使用 strip 移除调试符号
 strip target/release/tldr
 
-# 检查大小
+# 4. 检查大小
 ls -lh target/release/tldr
 ```
 
 ## 测试
 
+**在 Workspace 根目录执行**：
+
 ```bash
-# 运行所有测试
+# 1. 进入项目根目录
+cd /path/to/tealdeer
+
+# 2. 运行 CLI 测试
 cargo test -p tldr
 
-# 运行 workspace 所有测试
+# 3. 运行所有测试
 cargo test --workspace
 
-# 运行特定测试
+# 4. 运行特定测试
 cargo test -p tldr test_name
 ```
 
@@ -134,7 +186,23 @@ cargo test -p tldr test_name
 
 ### 本地安装
 
+**方法 1：使用 cargo install（推荐）**
+
 ```bash
+# 在 Workspace 根目录执行
+cd /path/to/tealdeer
+cargo install --path tldr
+
+# 验证（可以在任何目录执行）
+tldr --version
+```
+
+**方法 2：手动复制**
+
+```bash
+# 在 Workspace 根目录执行
+cd /path/to/tealdeer
+
 # 复制到用户目录
 mkdir -p ~/.local/bin
 cp target/release/tldr ~/.local/bin/
@@ -143,17 +211,28 @@ chmod +x ~/.local/bin/tldr
 # 确保 ~/.local/bin 在 PATH 中
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
+
+# 验证（可以在任何目录执行）
+tldr --version
 ```
 
 ### 系统安装
 
 ```bash
+# 在 Workspace 根目录执行
+cd /path/to/tealdeer
+
 # 复制到系统目录（需要 sudo）
 sudo cp target/release/tldr /usr/local/bin/
 sudo chmod +x /usr/local/bin/tldr
+
+# 验证（可以在任何目录执行）
+tldr --version
 ```
 
 ## 验证安装
+
+**可以在任何目录执行**：
 
 ```bash
 # 检查版本
@@ -164,39 +243,49 @@ tldr --help
 
 # 测试功能
 tldr tar
+tldr --list
 ```
 
 ## 构建 GUI 应用
 
-如果需要构建 GUI 应用：
+**在 GUI 目录执行**：
 
 ```bash
-# 进入 GUI 目录
-cd frontend/tealdeer-widget
+# 1. 进入 GUI 目录
+cd /path/to/tealdeer/frontend/tealdeer-widget
 
-# 安装依赖
+# 2. 安装依赖
 npm install
 
-# 开发模式
+# 3. 开发模式
 npm run tauri dev
 
-# 构建 release
+# 4. 构建 release
 npm run tauri build
 
-# 输出位置
+# 5. 输出位置
 # Linux: src-tauri/target/release/bundle/deb/
 # Linux: src-tauri/target/release/bundle/rpm/
 ```
+
+**注意**：GUI 构建命令在 GUI 目录执行，不在 Workspace 根目录。
 
 ## 常见问题
 
 ### 1. 编译错误：找不到 tealdeer-core
 
+**错误信息**：
+```
+error: package `tldr` not found
+```
+
 **原因**：不在 workspace 根目录
 
 **解决**：
 ```bash
-cd /path/to/tealdeer  # 确保在项目根目录
+# 确保在项目根目录
+cd /path/to/tealdeer  # ← 必须在这里
+pwd                   # 应该显示 .../tealdeer
 cargo build -p tldr
 ```
 
@@ -220,18 +309,38 @@ sudo apt install build-essential  # Ubuntu/Debian
 rustup update stable
 ```
 
+### 4. 找不到二进制文件
+
+**问题**：编译成功但找不到 `tldr` 命令
+
+**解决**：
+```bash
+# 方法 1：使用完整路径
+cd /path/to/tealdeer
+./target/release/tldr --version
+
+# 方法 2：安装到 PATH
+cargo install --path tldr
+tldr --version  # 可以在任何目录执行
+```
+
 ## 交叉编译
 
 ### Linux → Windows
 
+**在 Workspace 根目录执行**：
+
 ```bash
-# 安装目标
+# 1. 进入项目根目录
+cd /path/to/tealdeer
+
+# 2. 安装目标
 rustup target add x86_64-pc-windows-gnu
 
-# 安装交叉编译工具
+# 3. 安装交叉编译工具
 sudo pacman -S mingw-w64-gcc  # Arch Linux
 
-# 编译
+# 4. 编译
 cargo build --release -p tldr --target x86_64-pc-windows-gnu
 ```
 
@@ -255,7 +364,11 @@ strip = true
 
 ### 运行时优化
 
+**在 Workspace 根目录执行**：
+
 ```bash
+cd /path/to/tealdeer
+
 # 使用 PGO（Profile-Guided Optimization）
 cargo build --release -p tldr
 ./target/release/tldr --list  # 生成 profile
@@ -277,10 +390,12 @@ cargo build --release -p tldr  # 使用 profile 重新编译
 
 ## 开发工作流
 
+**所有命令在 Workspace 根目录执行**：
+
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/your-repo/tealdeer.git
-cd tealdeer
+cd tealdeer                    # ← 进入根目录
 
 # 2. 检查代码
 cargo check -p tldr
@@ -299,12 +414,19 @@ cargo build --release -p tldr
 
 # 7. 安装
 cargo install --path tldr
+
+# 8. 使用（可以在任何目录）
+tldr tar
 ```
 
 ## 清理
 
+**在 Workspace 根目录执行**：
+
 ```bash
-# 清理构建产物
+cd /path/to/tealdeer
+
+# 清理所有构建产物
 cargo clean
 
 # 只清理 release 构建
@@ -313,6 +435,22 @@ cargo clean --release
 # 清理特定包
 cargo clean -p tldr
 ```
+
+## 路径总结
+
+| 操作 | 执行路径 | 示例 |
+|------|---------|------|
+| 构建 CLI | Workspace 根目录 | `cd tealdeer && cargo build -p tldr` |
+| 构建 Workspace | Workspace 根目录 | `cd tealdeer && cargo build --workspace` |
+| 安装 CLI | Workspace 根目录 | `cd tealdeer && cargo install --path tldr` |
+| 测试 | Workspace 根目录 | `cd tealdeer && cargo test -p tldr` |
+| 清理 | Workspace 根目录 | `cd tealdeer && cargo clean` |
+| 构建 GUI | GUI 目录 | `cd frontend/tealdeer-widget && npm run tauri build` |
+| 使用 CLI | 任何目录 | `tldr tar` |
+
+**记住**：
+- 📁 **构建/测试** → 在 **Workspace 根目录**（`tealdeer/`）
+- 🚀 **使用命令** → 在 **任何目录**（安装后）
 
 ## 更多信息
 
@@ -326,3 +464,4 @@ cargo clean -p tldr
   - 分离核心库（tealdeer-core）
   - 独立 CLI 包（tldr）
   - 共享依赖管理
+  - **重要**：所有构建命令需在 Workspace 根目录执行
