@@ -106,6 +106,7 @@ const isLoading = ref(false);
 const viewMode = ref<"rendered" | "raw">("rendered");
 const copyLabel = ref(t('search.copy'));
 const lastCommand = ref("");
+const updateProgress = ref("");
 
 const newMode = ref<"page" | "patch" | "append">("page");
 const newCommand = ref("");
@@ -612,6 +613,7 @@ async function runSearch() {
 async function updateCache() {
   isLoading.value = true;
   errorMessage.value = "";
+  updateProgress.value = "Starting update...";
 
   try {
     logUiInfo("Starting cache update");
@@ -619,6 +621,7 @@ async function updateCache() {
     
     if (result.status === 0) {
       logUiInfo("Cache updated successfully");
+      updateProgress.value = "";
       errorMessage.value = "Cache updated successfully!";
       // Set success styling for cache update message
       setTimeout(() => {
@@ -628,10 +631,12 @@ async function updateCache() {
       }, 10000);
     } else {
       errorMessage.value = result.stderr || "Update failed";
+      updateProgress.value = "";
       logUiError(`Cache update failed: ${result.stderr}`);
     }
   } catch (err) {
     errorMessage.value = `Update failed: ${normalizeError(err)}`;
+    updateProgress.value = "";
     logUiError(`Cache update error: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
@@ -779,6 +784,13 @@ onMounted(() => {
   loadAppSettings();
   resolveLogPaths();
   logUiInfo("UI mounted");
+  
+  // 监听缓存更新进度
+  listen('cache-update-progress', (event) => {
+    updateProgress.value = event.payload as string;
+    logUiInfo(`Cache update: ${event.payload}`);
+  });
+  
   windowErrorHandler = (event) => {
     const location = event.filename
       ? `${event.filename}:${event.lineno ?? 0}:${event.colno ?? 0}`
@@ -932,7 +944,7 @@ onBeforeUnmount(() => {
 
         <div class="actions">
           <button class="primary" type="submit" :disabled="isLoading || !!invalidReason">
-            {{ isLoading ? t('search.running') : t('search.run') }}
+            {{ t('search.run') }}
           </button>
           <button class="ghost" type="button" @click="previewRaw" :disabled="!rawOutput">
             {{ t('search.previewRaw') }}
@@ -950,6 +962,7 @@ onBeforeUnmount(() => {
             {{ isLoading ? t('search.updating') : t('search.updateCache') }}
           </button>
           <span class="hint" v-if="invalidReason">{{ invalidReason }}</span>
+          <p v-if="updateProgress" class="update-progress">{{ updateProgress }}</p>
         </div>
       </form>
     </section>
@@ -2182,6 +2195,13 @@ select optgroup {
 .hint {
   font-size: 0.85rem;
   color: var(--hint-text);
+}
+
+.update-progress {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .status-text {

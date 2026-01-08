@@ -1,6 +1,6 @@
 use log::{info, warn};
 use serde::Serialize;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Emitter, Runtime};
 
 use tealdeer::{run, RunArgs, RunOutput};
 use tealdeer::types::{ColorOptions, PlatformType};
@@ -92,8 +92,27 @@ pub fn preview_effective_output(
 }
 
 #[tauri::command]
-pub fn update_cache<R: tauri::Runtime>(app: AppHandle<R>) -> Result<RenderResult, String> {
-    update_cache_internal(&app)
+pub async fn update_cache<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    window: tauri::Window<R>
+) -> Result<RenderResult, String> {
+    // 在后台线程执行，避免阻塞 UI
+    tokio::task::spawn_blocking(move || {
+        // 发送开始事件
+        let _ = window.emit("cache-update-progress", "Downloading tldr pages...");
+        
+        // 执行更新
+        let result = update_cache_internal(&app);
+        
+        // 发送完成事件
+        if result.is_ok() {
+            let _ = window.emit("cache-update-progress", "Update complete!");
+        }
+        
+        result
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 pub(crate) fn update_cache_internal<R: Runtime>(
