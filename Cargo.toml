@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "frontend/tealdeer-widget/src-tauri",
     "tldr",
     "tealdeer-core",
 ]
