@@ -1,0 +1,24 @@
+[package]
+name = "tldr"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Fast tldr client - command line interface"
+homepage.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "tldr"
+path = "src/main.rs"
+
+[dependencies]
+tealdeer-core = { path = "../tealdeer-core", features = ["rustls-with-native-roots", "cli"] }
+clap.workspace = true
+anyhow.workspace = true
+env_logger.workspace = true
+
+[features]
+default = []
+logging = ["tealdeer-core/logging"]
