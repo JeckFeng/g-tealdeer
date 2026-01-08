@@ -1,385 +1,328 @@
-# Tealdeer 项目完整 CLI 命令说明文档
+# 构建 CLI 工具指南
 
-## 前后端环境区分
+本文档说明如何从源代码构建 `tldr` CLI 工具。
 
-**后端 (Rust CLI)**：
-- **开发环境**：使用 `cargo build` 构建调试版本，启用日志和调试符号
-- **生产环境**：使用 `cargo build --release` 构建优化版本，禁用调试信息
+## 项目架构
 
-**前端 (Tauri + Vue)**：
-- **开发环境**：使用 `npm run dev` 和 `npm run tauri -- dev` 进行热重载开发
-- **生产环境**：使用 `npm run build` 和 `npm run tauri -- build` 构建优化版本
+本项目采用 Cargo Workspace 架构：
 
----
+```
+tealdeer/
+├── Cargo.toml (Workspace)
+├── tealdeer-core/ (共享核心库)
+├── tldr/ (CLI 工具)
+└── frontend/tealdeer-widget/src-tauri/ (GUI 应用)
+```
 
-# 1. 开发环境
+## 前置要求
 
-## 1.1 开发环境【前端】
+### 必需
+- **Rust 工具链**：1.70 或更高版本
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
 
-> [!NOTE]
-> 前端开发环境下的命令都在 `/mnt/data_nvme/code/tealdeer/frontend/tealdeer-widget` 路径下运行。
+### 可选（仅用于 GUI）
+- **Node.js**：18.x 或更高版本
+- **系统依赖**（Linux）：
+  ```bash
+  # Arch Linux
+  sudo pacman -S webkit2gtk-4.1 libayatana-appindicator gtk3
+  
+  # Ubuntu/Debian
+  sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libgtk-3-dev
+  ```
 
-### 步骤 1: 安装依赖
+## 构建 CLI 工具
+
+### 方法 1：构建单个包（推荐）
 
 ```bash
+# 进入项目目录
+cd tealdeer
+
+# 构建 CLI（debug 版本）
+cargo build -p tldr
+
+# 构建 CLI（release 版本）
+cargo build --release -p tldr
+
+# 二进制文件位置
+# Debug: ./target/debug/tldr
+# Release: ./target/release/tldr
+```
+
+### 方法 2：构建整个 Workspace
+
+```bash
+# 构建所有包（包括 CLI 和 GUI）
+cargo build --workspace
+
+# Release 版本
+cargo build --workspace --release
+```
+
+### 方法 3：直接安装
+
+```bash
+# 从项目目录安装
+cargo install --path tldr
+
+# 安装到 ~/.cargo/bin/tldr
+```
+
+## 构建选项
+
+### Features
+
+CLI 支持以下 features：
+
+- `default`：默认启用 rustls-with-webpki-roots
+- `logging`：启用日志功能
+- `native-tls`：使用系统原生 TLS
+- `rustls-with-webpki-roots`：使用 rustls + webpki 根证书
+- `rustls-with-native-roots`：使用 rustls + 系统根证书
+
+示例：
+
+```bash
+# 启用日志功能
+cargo build --release -p tldr --features logging
+
+# 使用原生 TLS
+cargo build --release -p tldr --no-default-features --features native-tls
+```
+
+## 编译时间和大小
+
+### Debug 版本
+- **编译时间**：< 1 秒（增量编译）
+- **二进制大小**：约 63 MB
+
+### Release 版本
+- **编译时间**：约 8-10 秒（增量编译）
+- **二进制大小**：约 5.4 MB
+- **优化后**：约 4.4 MB（使用 `strip`）
+
+## 优化二进制大小
+
+```bash
+# 编译 release 版本
+cargo build --release -p tldr
+
+# 使用 strip 移除调试符号
+strip target/release/tldr
+
+# 检查大小
+ls -lh target/release/tldr
+```
+
+## 测试
+
+```bash
+# 运行所有测试
+cargo test -p tldr
+
+# 运行 workspace 所有测试
+cargo test --workspace
+
+# 运行特定测试
+cargo test -p tldr test_name
+```
+
+## 安装
+
+### 本地安装
+
+```bash
+# 复制到用户目录
+mkdir -p ~/.local/bin
+cp target/release/tldr ~/.local/bin/
+chmod +x ~/.local/bin/tldr
+
+# 确保 ~/.local/bin 在 PATH 中
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### 系统安装
+
+```bash
+# 复制到系统目录（需要 sudo）
+sudo cp target/release/tldr /usr/local/bin/
+sudo chmod +x /usr/local/bin/tldr
+```
+
+## 验证安装
+
+```bash
+# 检查版本
+tldr --version
+
+# 查看帮助
+tldr --help
+
+# 测试功能
+tldr tar
+```
+
+## 构建 GUI 应用
+
+如果需要构建 GUI 应用：
+
+```bash
+# 进入 GUI 目录
+cd frontend/tealdeer-widget
+
+# 安装依赖
 npm install
+
+# 开发模式
+npm run tauri dev
+
+# 构建 release
+npm run tauri build
+
+# 输出位置
+# Linux: src-tauri/target/release/bundle/deb/
+# Linux: src-tauri/target/release/bundle/rpm/
 ```
 
-**命令解释**：
-- `npm install`：Node.js 包管理器安装命令
-- 作用：根据 package.json 安装所有依赖包
-- 包括：Vue 3、Tauri API、TypeScript、Vite 等
+## 常见问题
 
-### 步骤 2: 启动开发服务器（仅前端）
+### 1. 编译错误：找不到 tealdeer-core
+
+**原因**：不在 workspace 根目录
+
+**解决**：
+```bash
+cd /path/to/tealdeer  # 确保在项目根目录
+cargo build -p tldr
+```
+
+### 2. 链接错误
+
+**原因**：缺少系统依赖
+
+**解决**：
+```bash
+# 安装必要的开发包
+sudo pacman -S base-devel  # Arch Linux
+sudo apt install build-essential  # Ubuntu/Debian
+```
+
+### 3. 版本不匹配
+
+**原因**：Rust 版本过旧
+
+**解决**：
+```bash
+rustup update stable
+```
+
+## 交叉编译
+
+### Linux → Windows
 
 ```bash
-npm run dev
+# 安装目标
+rustup target add x86_64-pc-windows-gnu
+
+# 安装交叉编译工具
+sudo pacman -S mingw-w64-gcc  # Arch Linux
+
+# 编译
+cargo build --release -p tldr --target x86_64-pc-windows-gnu
 ```
 
-**命令解释**：
-- `npm run dev`：启动 Vite 开发服务器
-- 实际执行：`vite`
-- 提供热重载、快速刷新等开发功能
-- 默认端口：http://localhost:5173
-- **仅用于前端开发调试，不启动桌面应用**
+### Linux → macOS
 
-### 步骤 3: 启动 Tauri 开发模式（前端 + 桌面应用）
+需要使用 osxcross 工具链（较复杂，不推荐）
+
+## 性能优化
+
+### 编译时优化
+
+在 `Cargo.toml` 中添加：
+
+```toml
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+```
+
+### 运行时优化
 
 ```bash
-npm run tauri -- dev
+# 使用 PGO（Profile-Guided Optimization）
+cargo build --release -p tldr
+./target/release/tldr --list  # 生成 profile
+cargo build --release -p tldr  # 使用 profile 重新编译
 ```
 
-**命令解释**：
-- `npm run tauri -- dev`：启动 Tauri 开发模式
-- `--`：参数分隔符
-- `dev`：传递给 tauri 命令的参数
-- 同时启动前端开发服务器和 Tauri 桌面应用
+## 依赖说明
 
-## 1.2 开发环境【后端】
+### 核心依赖
+- `tealdeer-core`：共享核心库
+- `clap`：命令行参数解析
+- `env_logger`：日志功能（可选）
 
-> [!NOTE]
-> 后端开发环境下的命令都在 `/mnt/data_nvme/code/tealdeer` 路径下运行。
+### 间接依赖
+- `ureq`：HTTP 客户端
+- `yansi`：终端颜色
+- `serde`：序列化
+- `toml`：配置文件解析
 
-### 步骤 1: 调试版本编译
+## 开发工作流
 
 ```bash
-cargo build
+# 1. 克隆仓库
+git clone https://github.com/your-repo/tealdeer.git
+cd tealdeer
+
+# 2. 检查代码
+cargo check -p tldr
+
+# 3. 运行测试
+cargo test -p tldr
+
+# 4. 开发构建
+cargo build -p tldr
+
+# 5. 运行
+./target/debug/tldr tar
+
+# 6. Release 构建
+cargo build --release -p tldr
+
+# 7. 安装
+cargo install --path tldr
 ```
 
-**命令解释**：
-- `cargo build`：编译 Rust 项目
-- 生成调试版本，包含调试符号
-- 输出路径：`target/debug/tldr`
-
-### 步骤 2: 启用日志的调试编译
+## 清理
 
 ```bash
-cargo build --features logging
+# 清理构建产物
+cargo clean
+
+# 只清理 release 构建
+cargo clean --release
+
+# 清理特定包
+cargo clean -p tldr
 ```
 
-**命令解释**：
-- `--features logging`：启用日志功能
-- 包含 env_logger 依赖，支持运行时日志输出
+## 更多信息
 
-### 步骤 3: 设置日志环境变量
+- **项目主页**：https://github.com/tealdeer-rs/tealdeer
+- **文档**：https://tealdeer-rs.github.io/tealdeer/
+- **问题反馈**：https://github.com/tealdeer-rs/tealdeer/issues
 
-```bash
-export RUST_LOG=tldr=debug
-```
+## 版本历史
 
-**命令解释**：
-- `RUST_LOG=tldr=debug`：设置日志级别
-- `tldr`：模块名称
-- `debug`：日志级别（trace, debug, info, warn, error）
-
----
-
-# 2. 生产环境
-
-## 2.1 生产环境【前端】
-
-> [!NOTE]
-> 前端生产环境下的命令都在 `/mnt/data_nvme/code/tealdeer/frontend/tealdeer-widget` 路径下运行。
-
-### 步骤 1: 清理前端缓存
-
-```bash
-rm -rf node_modules dist src-tauri/target
-npm install
-```
-
-**命令解释**：
-- `rm -rf node_modules dist src-tauri/target`：删除缓存目录
-- `npm install`：重新安装依赖，确保版本一致
-
-### 步骤 2: 生产版本构建
-
-```bash
-npm run tauri -- build
-```
-
-**命令解释**：
-- 执行完整的生产构建流程
-- 包含前端优化和 Rust 后端编译
-- 生成所有支持的安装包格式（deb, rpm, AppImage）
-
-## 2.2 生产环境【后端】
-
-> [!NOTE]
-> 后端生产环境下的命令都在 `/mnt/data_nvme/code/tealdeer` 路径下运行。
-
-### 发布版本编译
-
-```bash
-cargo build --release
-```
-
-**命令解释**：
-- `cargo build --release`：编译优化的发布版本
-- 启用所有优化选项，禁用调试信息
-- 输出路径：`target/release/tldr`
-
----
-
-# 3. 如何使用生产环境下打包好的产物？
-
-> [!NOTE]
-> 使用安装包的命令都在 `/mnt/data_nvme/code/tealdeer/frontend/tealdeer-widget` 路径下运行。
-
-## 3.1 AppImage
-
-AppImage 官方/社区常用的方式是让 AppImage 手动解包后运行。这样做是为了不依赖 FUSE。
-
-```bash
-# 解包
-./Tealdeer-Tile_0.1.0_amd64.AppImage --appimage-extract
-
-# 运行
-./squashfs-root/AppRun
-```
-
-## 3.2 deb 安装包
-
-### 安装方法
-
-```bash
-# 直接拷贝二进制文件到用户目录
-cp src-tauri/target/release/tealdeer_tile ~/.local/bin/
-
-# 赋予执行权限
-chmod +x ~/.local/bin/tealdeer_tile
-```
-
-### 运行应用
-
-通过上述命令安装后，在终端的任意路径下都可以运行：
-
-```bash
-tealdeer_tile
-```
-
-### 卸载
-
-```bash
-rm ~/.local/bin/tealdeer_tile
-```
-
-## 3.3 rpm 安装包
-
-### 在 Arch Linux 上使用 rpm 包
-
-**方法 1：使用 debtap 转换（推荐）**
-
-```bash
-# 安装 debtap（从 AUR）
-yay -S debtap
-
-# 更新 debtap 数据库（首次使用）
-sudo debtap -u
-
-# 转换 rpm 包为 Arch 包
-cd src-tauri/target/release/bundle/rpm
-debtap Tealdeer-Tile-0.1.0-1.x86_64.rpm
-
-# 安装生成的 pkg.tar.zst 包
-sudo pacman -U tealdeer-tile-*.pkg.tar.zst
-```
-
-**方法 2：直接使用二进制文件（最简单）**
-
-```bash
-# 与 deb 包相同，直接复制二进制文件
-cp src-tauri/target/release/tealdeer_tile ~/.local/bin/
-chmod +x ~/.local/bin/tealdeer_tile
-```
-
-### 卸载
-
-```bash
-# 如果使用 debtap 安装
-sudo pacman -R tealdeer-tile
-
-# 如果手动安装
-rm ~/.local/bin/tealdeer_tile
-```
-
----
-
-# 4. 故障排除
-
-## 4.1 AppImage 构建失败
-
-```bash
-# 使用禁用 strip 的构建
-npm run bundle:linux
-```
-
-## 4.2 权限问题
-
-```bash
-# 确保正确的文件权限
-sudo chown -R $USER:$USER ~/.config/tealdeer
-```
-
-## 4.3 linuxdeploy error 问题
-
-使用 `npm run bundle:linux` 构建，这样会禁用 strip 的构建，应用体积会变大。
-
-或者只构建 deb 和 rpm 包：
-
-```bash
-npm run bundle:linux:deb-rpm
-```
-
-## 4.4 Cannot mount AppImage, please check your FUSE setup
-
-AppImage 官方/社区常用的方式是让 AppImage 手动解包后运行。这样做是为了不依赖 FUSE。
-
-```bash
-# 解包
-./Tealdeer-Tile_0.1.0_amd64.AppImage --appimage-extract
-
-# 运行
-./squashfs-root/AppRun
-```
-
-## 4.5 构建命令区别
-
-### `npm run build`
-
-- **作用**：仅构建前端（Vue 应用）
-- **输出**：`dist/` 目录（HTML, CSS, JS）
-- **用途**：Web 部署或前端调试
-- **不包含**：Rust 后端、桌面应用
-
-### `npm run tauri -- build`
-
-- **作用**：构建完整的 Tauri 桌面应用
-- **流程**：
-  1. 运行 `npm run build` 构建前端
-  2. 编译 Rust 后端 (`cargo build --release`)
-  3. 打包成安装包（deb, rpm, AppImage）
-- **输出**：
-  - 二进制文件：`src-tauri/target/release/tealdeer_tile`
-  - 安装包：`src-tauri/target/release/bundle/`
-
-### `npm run build:linux`
-
-- **等同于**：`NO_STRIP=1 tauri build`
-- **作用**：与 `npm run tauri -- build` 相同，但禁用二进制文件 strip
-- **用途**：解决 linuxdeploy 构建 AppImage 时的兼容性问题
-- **缺点**：生成的文件更大（保留调试符号）
-
-### `tauri build`
-
-- **作用**：与 `npm run tauri -- build` 完全相同
-- **区别**：直接调用 tauri 命令，不通过 npm scripts
-
-### 使用建议
-
-| 场景 | 推荐命令 |
-|------|---------|
-| 仅调试前端 | `npm run build` |
-| 标准构建桌面应用 | `npm run tauri -- build` |
-| AppImage 构建失败 | `npm run build:linux` |
-| 只需要 deb/rpm | `npm run bundle:linux:deb-rpm` |
-
-## 4.6 开发命令区别
-
-### `npm run dev`
-
-- **作用**：仅启动前端开发服务器
-- **实际执行**：`vite`
-- **端口**：http://localhost:5173
-- **特点**：
-  - 热重载（HMR）
-  - 快速刷新
-  - 仅用于前端开发
-  - **不启动桌面应用**
-  - **无法调用 Tauri API**
-
-### `npm run tauri -- dev`
-
-- **作用**：启动完整的 Tauri 开发环境
-- **实际执行**：`tauri dev`
-- **流程**：
-  1. 启动前端开发服务器（Vite）
-  2. 编译 Rust 后端（debug 模式）
-  3. 启动桌面应用窗口
-- **特点**：
-  - 前端热重载
-  - 后端自动重编译
-  - 可调用 Tauri API
-  - 完整的桌面应用体验
-
-### 使用建议
-
-| 场景 | 推荐命令 |
-|------|---------|
-| 仅调试前端 UI | `npm run dev` |
-| 调试桌面应用功能 | `npm run tauri -- dev` |
-| 测试 Tauri API 调用 | `npm run tauri -- dev` |
-| 快速预览前端样式 | `npm run dev` |
-
----
-
-## 附录：常用命令速查表
-
-### 开发环境
-
-```bash
-# 前端开发（仅 UI）
-npm run dev
-
-# 桌面应用开发（完整功能）
-npm run tauri -- dev
-
-# 后端开发（CLI 工具）
-cargo build --features logging
-export RUST_LOG=tldr=debug
-./target/debug/tldr
-```
-
-### 生产环境
-
-```bash
-# 构建桌面应用（所有格式）
-npm run tauri -- build
-
-# 构建桌面应用（仅 deb/rpm）
-npm run bundle:linux:deb-rpm
-
-# 构建后端 CLI
-cargo build --release
-```
-
-### 安装与运行
-
-```bash
-# 安装到用户目录
-cp src-tauri/target/release/tealdeer_tile ~/.local/bin/
-chmod +x ~/.local/bin/tealdeer_tile
-
-# 运行
-tealdeer_tile
-```
+- **v1.8.1**：Workspace 架构重构
+  - 分离核心库（tealdeer-core）
+  - 独立 CLI 包（tldr）
+  - 共享依赖管理
