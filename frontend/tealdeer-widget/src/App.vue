@@ -108,6 +108,12 @@ const copyLabel = ref(t('search.copy'));
 const lastCommand = ref("");
 const updateProgress = ref("");
 
+// 临时 placeholder 状态
+const commandPlaceholderTemp = ref('');
+const commandPlaceholderTimer = ref<number | null>(null);
+const newCommandPlaceholderTemp = ref('');
+const newCommandPlaceholderTimer = ref<number | null>(null);
+
 const newMode = ref<"page" | "patch" | "append">("page");
 const newCommand = ref("");
 const summary = ref("");
@@ -154,8 +160,8 @@ const platformOptions = [
   { value: "windows", label: "Windows" },
 ];
 
-const invalidReason = computed(() => validateCommandString(commandInput.value));
-const previewInvalidReason = computed(() => validateCommandString(newCommand.value));
+// const invalidReason = computed(() => validateCommandString(commandInput.value));
+// const previewInvalidReason = computed(() => validateCommandString(newCommand.value));
 const newInvalidReason = computed(() => {
   const commandReason = validateCommandString(newCommand.value);
   if (commandReason) {
@@ -219,6 +225,41 @@ const renderedHtml = computed(() => {
 
 function tokenizeCommand(value: string): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
+}
+
+// 计算属性：动态 placeholder
+const commandPlaceholder = computed(() => {
+  return commandPlaceholderTemp.value || t('search.commandPlaceholder');
+});
+
+const newCommandPlaceholder = computed(() => {
+  return newCommandPlaceholderTemp.value || t('newPage.commandPlaceholder');
+});
+
+// 显示 "Command is required" 提示
+function showCommandRequiredHint(
+  inputValue: string,
+  placeholderRef: typeof commandPlaceholderTemp,
+  timerRef: typeof commandPlaceholderTimer
+): boolean {
+  if (!inputValue.trim()) {
+    // 清除之前的定时器
+    if (timerRef.value) {
+      clearTimeout(timerRef.value);
+    }
+    
+    // 设置临时 placeholder
+    placeholderRef.value = t('validation.commandRequired');
+    
+    // 60 秒后恢复
+    timerRef.value = window.setTimeout(() => {
+      placeholderRef.value = '';
+      timerRef.value = null;
+    }, 60000);
+    
+    return true; // 输入无效
+  }
+  return false; // 输入有效
 }
 
 function validateCommandString(value: string): string {
@@ -576,9 +617,19 @@ async function openCustomDir() {
 }
 
 async function runSearch() {
-  const reason = invalidReason.value;
-  if (reason) {
-    errorMessage.value = reason;
+  // 验证输入
+  if (showCommandRequiredHint(
+    commandInput.value,
+    commandPlaceholderTemp,
+    commandPlaceholderTimer
+  )) {
+    return; // 输入无效，不执行搜索
+  }
+  
+  // 验证路径分隔符
+  const trimmed = commandInput.value.trim();
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+    errorMessage.value = t('validation.commandInvalidPath');
     return;
   }
 
@@ -644,9 +695,19 @@ async function updateCache() {
 }
 
 async function runPreview() {
-  const reason = previewInvalidReason.value;
-  if (reason) {
-    newError.value = reason;
+  // 验证输入
+  if (showCommandRequiredHint(
+    newCommand.value,
+    newCommandPlaceholderTemp,
+    newCommandPlaceholderTimer
+  )) {
+    return; // 输入无效，不执行预览
+  }
+  
+  // 验证路径分隔符
+  const trimmed = newCommand.value.trim();
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+    newError.value = t('validation.commandInvalidPath');
     return;
   }
 
@@ -679,10 +740,40 @@ async function runPreview() {
 }
 
 async function createCustom() {
-  const reason = newInvalidReason.value;
-  if (reason) {
-    setErrorMessage(reason, "new");
+  // 验证命令输入
+  if (showCommandRequiredHint(
+    newCommand.value,
+    newCommandPlaceholderTemp,
+    newCommandPlaceholderTimer
+  )) {
     return;
+  }
+  
+  // 验证路径分隔符
+  const trimmed = newCommand.value.trim();
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+    setErrorMessage(t('validation.commandInvalidPath'), "new");
+    return;
+  }
+  
+  // 验证其他字段
+  if (newMode.value === "page" && !summary.value.trim()) {
+    setErrorMessage(t('validation.summaryRequired'), "new");
+    return;
+  }
+  
+  const neededExamples = newMode.value === "append" ? 1 : examples.value.length;
+  if (neededExamples === 0) {
+    setErrorMessage(t('validation.exampleRequired'), "new");
+    return;
+  }
+  
+  for (let i = 0; i < neededExamples; i += 1) {
+    const example = examples.value[i];
+    if (!example || !example.desc.trim() || !example.cmd.trim()) {
+      setErrorMessage(t('validation.exampleComplete'), "new");
+      return;
+    }
   }
 
   isCreating.value = true;
@@ -822,6 +913,14 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  // 清理定时器
+  if (commandPlaceholderTimer.value) {
+    clearTimeout(commandPlaceholderTimer.value);
+  }
+  if (newCommandPlaceholderTimer.value) {
+    clearTimeout(newCommandPlaceholderTimer.value);
+  }
+  
   if (unlistenNavigate) {
     unlistenNavigate();
     unlistenNavigate = null;
@@ -905,7 +1004,8 @@ onBeforeUnmount(() => {
           <input
             v-model="commandInput"
             type="text"
-            :placeholder="t('search.commandPlaceholder')"
+            :placeholder="commandPlaceholder"
+            :class="{ error: commandPlaceholderTemp }"
             autocomplete="off"
           />
         </label>
@@ -943,7 +1043,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="actions">
-          <button class="primary" type="submit" :disabled="isLoading || !!invalidReason">
+          <button class="primary" type="submit" :disabled="isLoading">
             {{ t('search.run') }}
           </button>
           <button class="ghost" type="button" @click="previewRaw" :disabled="!rawOutput">
@@ -961,7 +1061,6 @@ onBeforeUnmount(() => {
           >
             {{ isLoading ? t('search.updating') : t('search.updateCache') }}
           </button>
-          <span class="hint" v-if="invalidReason">{{ invalidReason }}</span>
           <p v-if="updateProgress" class="update-progress">{{ updateProgress }}</p>
         </div>
       </form>
@@ -1022,7 +1121,8 @@ onBeforeUnmount(() => {
           <input
             v-model="newCommand"
             type="text"
-            :placeholder="t('search.commandPlaceholder')"
+            :placeholder="newCommandPlaceholder"
+            :class="{ error: newCommandPlaceholderTemp }"
             autocomplete="off"
             @input="resetNewStatus"
           />
@@ -1091,7 +1191,7 @@ onBeforeUnmount(() => {
           <button
             class="primary"
             type="button"
-            :disabled="isCreating || !!newInvalidReason"
+            :disabled="isCreating"
             @click="createCustom"
           >
             {{ isCreating ? t('newPage.generating') : t('newPage.generate') }}
@@ -1099,7 +1199,7 @@ onBeforeUnmount(() => {
           <button
             class="ghost"
             type="button"
-            :disabled="isLoading || !!previewInvalidReason"
+            :disabled="isLoading"
             @click="runPreview"
           >
             {{ t('newPage.previewOutput') }}
@@ -1107,7 +1207,7 @@ onBeforeUnmount(() => {
           <button class="ghost" type="button" @click="openCustomDir">
             {{ t('newPage.openCustomDir') }}
           </button>
-          <span class="hint" v-if="newInvalidReason">{{ newInvalidReason }}</span>
+
         </div>
 
         <p v-if="newStatus" :class="['status-text', newStatusType]">{{ newStatus }}</p>
@@ -1742,6 +1842,10 @@ select {
 
 input[type="text"]::placeholder {
   color: var(--text-muted);
+}
+
+input[type="text"].error::placeholder {
+  color: var(--alert-text);
 }
 
 input[type="text"]:focus,
