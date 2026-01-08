@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { appLogDir, join } from "@tauri-apps/api/path";
 import { error as logError, info as logInfo, warn as logWarn } from "@tauri-apps/plugin-log";
-import { openPath } from "@tauri-apps/plugin-opener";
 import MarkdownIt from "markdown-it";
 import { useI18n } from "vue-i18n";
 import { saveLocale } from "./locales";
@@ -464,7 +463,7 @@ async function deleteEntry(entry: CustomEntry) {
 async function openEntry(entry: CustomEntry) {
   manageError.value = "";
   try {
-    await openPath(entry.path);
+    await invoke("open_custom_page_file", { filePath: entry.path });
   } catch (err) {
     manageError.value = normalizeError(err);
     logUiError(`Failed to open custom entry: ${normalizeError(err)}`);
@@ -562,12 +561,8 @@ async function saveSettings() {
 
 async function openConfigFile() {
   resetSettingsStatus();
-  if (!showPaths.value?.config_path) {
-    settingsError.value = "Config path is not available.";
-    return;
-  }
   try {
-    await openPath(showPaths.value.config_path);
+    await invoke("open_config_file");
   } catch (err) {
     settingsError.value = normalizeError(err);
     logUiError(`Failed to open config.toml: ${normalizeError(err)}`);
@@ -581,7 +576,7 @@ async function openLogPath(path: string | null, label: string) {
     return;
   }
   try {
-    await openPath(path);
+    await invoke("open_log_directory", { logDir: path });
   } catch (err) {
     settingsError.value = normalizeError(err);
     logUiError(`Failed to open ${label}: ${normalizeError(err)}`);
@@ -603,12 +598,7 @@ async function openWebviewLog() {
 async function openCustomDir() {
   resetNewStatus();
   try {
-    const paths = await invoke<ShowPaths>("get_show_paths");
-    if (!paths.custom_pages_dir) {
-      setErrorMessage("Custom pages directory is not available.", "new");
-      return;
-    }
-    await openPath(paths.custom_pages_dir);
+    await invoke("open_custom_pages_dir");
     logUiInfo("Opened custom pages directory");
   } catch (err) {
     setErrorMessage(normalizeError(err), "new");

@@ -53,7 +53,11 @@ pub fn run() {
             backend::settings::set_app_settings,
             backend::settings::get_tealdeer_config,
             backend::settings::get_tealdeer_config_values,
-            backend::settings::set_tealdeer_config
+            backend::settings::set_tealdeer_config,
+            backend::open_paths::open_custom_pages_dir,
+            backend::open_paths::open_config_file,
+            backend::open_paths::open_log_directory,
+            backend::open_paths::open_custom_page_file
         ])
         .setup(|app| {
             if let Err(err) = backend::tray_hotkey::setup(app.handle()) {
