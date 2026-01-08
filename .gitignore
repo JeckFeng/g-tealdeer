@@ -3,4 +3,7 @@ target
 *.tar.gz
 tldr-master/
 dist-*/
-
+.vscode/
+.kior/
+.gitignore
+*.gitignore
