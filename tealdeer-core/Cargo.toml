@@ -1,5 +1,5 @@
 [package]
-name = "tealdeer"
+name = "tealdeer-core"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -12,10 +12,6 @@ description = "Fetch and show tldr help pages for many CLI commands."
 [lib]
 name = "tealdeer"
 path = "src/lib.rs"
-
-[[bin]]
-name = "tldr"
-path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
@@ -44,3 +40,4 @@ logging = ["env_logger"]
 native-tls = []
 rustls-with-webpki-roots = []
 rustls-with-native-roots = []
+

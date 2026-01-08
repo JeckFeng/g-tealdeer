@@ -1001,7 +1001,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tealdeer"
+name = "tealdeer-core"
 version = "1.8.1"
 dependencies = [
  "anyhow",
