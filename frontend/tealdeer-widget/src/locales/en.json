@@ -137,5 +137,12 @@
     "german": "German",
     "french": "French",
     "na": "N/A"
+  },
+  "validation": {
+    "commandRequired": "Command is required.",
+    "commandInvalidPath": "Command contains a path separator or traversal segment.",
+    "summaryRequired": "Summary is required for a custom page.",
+    "exampleRequired": "At least one example is required.",
+    "exampleComplete": "Each example needs a description and a command."
   }
 }

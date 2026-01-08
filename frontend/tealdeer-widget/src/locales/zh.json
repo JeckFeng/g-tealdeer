@@ -137,5 +137,12 @@
     "german": "德语",
     "french": "法语",
     "na": "不适用"
+  },
+  "validation": {
+    "commandRequired": "命令不能为空。",
+    "commandInvalidPath": "命令包含路径分隔符或遍历段。",
+    "summaryRequired": "自定义页面需要摘要。",
+    "exampleRequired": "至少需要一个示例。",
+    "exampleComplete": "每个示例都需要描述和命令。"
   }
 }

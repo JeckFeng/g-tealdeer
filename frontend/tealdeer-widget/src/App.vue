@@ -162,18 +162,18 @@ const newInvalidReason = computed(() => {
   }
 
   if (newMode.value === "page" && !summary.value.trim()) {
-    return "Summary is required for a custom page.";
+    return t("validation.summaryRequired");
   }
 
   const neededExamples = newMode.value === "append" ? 1 : examples.value.length;
   if (neededExamples === 0) {
-    return "At least one example is required.";
+    return t("validation.exampleRequired");
   }
 
   for (let i = 0; i < neededExamples; i += 1) {
     const example = examples.value[i];
     if (!example || !example.desc.trim() || !example.cmd.trim()) {
-      return "Each example needs a description and a command.";
+      return t("validation.exampleComplete");
     }
   }
 
@@ -223,10 +223,10 @@ function tokenizeCommand(value: string): string[] {
 function validateCommandString(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
-    return "Command is required.";
+    return t("validation.commandRequired");
   }
   if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
-    return "Command contains a path separator or traversal segment.";
+    return t("validation.commandInvalidPath");
   }
   return "";
 }

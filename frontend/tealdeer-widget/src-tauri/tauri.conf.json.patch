@@ -1,0 +1,1 @@
+将 "targets": "all" 改为 "targets": ["deb", "rpm"]
