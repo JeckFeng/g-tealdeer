@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "tldr",
     "tealdeer-core",
 ]
 resolver = "2"
