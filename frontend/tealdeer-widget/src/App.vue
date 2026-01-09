@@ -8,6 +8,8 @@ import MarkdownIt from "markdown-it";
 import { useI18n } from "vue-i18n";
 import { saveLocale } from "./locales";
 import logoLight from "../static/logo/logo_light.svg";
+import sunIcon from "../static/ico/sun.svg";
+import moonIcon from "../static/ico/moon.svg";
 
 const { t, locale } = useI18n();
 
@@ -207,8 +209,8 @@ const filteredEntries = computed(() => {
   });
 });
 
-const themeToggleLabel = computed(() =>
-  theme.value === "light" ? "Light" : "Dark",
+const themeIcon = computed(() =>
+  theme.value === "light" ? moonIcon : sunIcon,
 );
 const themeToggleTitle = computed(() =>
   theme.value === "light" ? "Switch to dark theme" : "Switch to light theme",
@@ -943,10 +945,10 @@ onBeforeUnmount(() => {
           class="theme-toggle"
           type="button"
           :title="themeToggleTitle"
+          :aria-label="themeToggleTitle"
           @click="toggleTheme"
         >
-          <span class="theme-indicator" aria-hidden="true"></span>
-          <span class="theme-label">{{ t('theme.label') }}: {{ themeToggleLabel }}</span>
+          <img :src="themeIcon" alt="" class="theme-icon" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -1678,7 +1680,7 @@ select {
 
 .app {
   min-height: 100vh;
-  padding: 32px clamp(16px, 4vw, 48px) 64px;
+  padding: 20px clamp(16px, 4vw, 48px) 64px;
   background:
     radial-gradient(1200px 600px at 0% 0%, var(--glow-1), transparent 60%),
     radial-gradient(1000px 500px at 100% 0%, var(--glow-2), transparent 60%),
@@ -1691,7 +1693,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .brand {
@@ -1709,37 +1711,35 @@ select {
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  justify-content: center;
+  padding: 8px;
   border-radius: 999px;
   border: 1px solid var(--button-ghost-border);
   background: var(--button-ghost-bg);
   color: var(--button-ghost-text);
-  font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .theme-toggle:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.theme-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-outline);
+.theme-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  transition: transform 0.3s ease;
 }
 
-.theme-label {
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
+.theme-toggle:hover .theme-icon {
+  transform: rotate(15deg);
 }
 
 .brand-logo {
-  width: 200px;
-  height: 200px;
+  width: 100px;
+  height: 100px;
   border-radius: 12px;
   object-fit: contain;
   flex-shrink: 0;

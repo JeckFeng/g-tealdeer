@@ -3,13 +3,6 @@
     "title": "Tealdeer-Tile",
     "subtitle": "Write, manage, search—your tealdeer pages, your way."
   },
-  "theme": {
-    "label": "Theme",
-    "light": "Light",
-    "dark": "Dark",
-    "switchToLight": "Switch to light theme",
-    "switchToDark": "Switch to dark theme"
-  },
   "tabs": {
     "search": "Search",
     "newPage": "New Page",

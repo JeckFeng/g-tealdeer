@@ -3,13 +3,6 @@
     "title": "Tealdeer-Tile",
     "subtitle": "编写、管理、搜索——您的 tealdeer 页面，您的方式。"
   },
-  "theme": {
-    "label": "主题",
-    "light": "浅色",
-    "dark": "深色",
-    "switchToLight": "切换到浅色主题",
-    "switchToDark": "切换到深色主题"
-  },
   "tabs": {
     "search": "搜索",
     "newPage": "新建页面",
