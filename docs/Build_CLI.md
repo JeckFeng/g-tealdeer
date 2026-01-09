@@ -61,7 +61,7 @@ cargo build --release -p tldr
 - 自动编译依赖的 `tealdeer-core`
 - 不编译 GUI 包（节省时间）
 
-### 方法 2：构建整个 Workspace
+### 方法 2：通过构建整个 Workspace的方式来构建CLI
 
 **在 Workspace 根目录执行**：
 
@@ -80,8 +80,11 @@ cargo build --workspace --release
 - 编译所有 workspace 成员
 - 包括 `tealdeer-core`、`tldr`、`tealdeer_tile`
 - 适合 CI/CD 验证
+> [!CAUTION]
+> 构建整个Workspace,只是编译构建CLI和GUI使用的后端rust代码，并不会把GUI的前端代码也构 建了
 
-### 方法 3：直接安装
+
+### 方法 3：直接安装CLI
 
 **在 Workspace 根目录执行**：
 
@@ -101,6 +104,9 @@ tldr --version                # ← 可以在任何目录执行
 - 安装到 `~/.cargo/bin/tldr`
 - 可以在任何目录直接使用 `tldr` 命令
 
+> [!CAUTION]
+> `cargo install --path tldr`只会安装CLI命令工具，并不会安装GUI界面软件
+
 ## 三种方法的区别
 
 | 方法 | 命令 | 编译内容 | 编译时间 | 适用场景 |
@@ -111,40 +117,30 @@ tldr --version                # ← 可以在任何目录执行
 
 **执行路径**：所有命令都必须在 **Workspace 根目录**（`tealdeer/`）执行。
 
-## 构建选项
+> [!NOTE]
+>
+>
+> CLI 支持以下 features：
+> ```bash
+> # 在 Workspace 根目录执行
+> cd /path/to/tealdeer
+> 
+> # 启用日志功能
+> cargo build --release -p tldr --features logging
+> 
+> # 使用原生 TLS
+> cargo build --release -p tldr --no-default-features --features > > > native-tls
+> ```
+>
+> **可用 features**：
+>
+> - `default`：默认启用 rustls-with-webpki-roots
+> - `logging`：启用日志功能
+> - `native-tls`：使用系统原生 TLS
+> - `rustls-with-webpki-roots`：使用 rustls + webpki 根证书
+> - `rustls-with-native-roots`：使用 rustls + 系统根证书
+>
 
-### Features
-
-CLI 支持以下 features：
-
-```bash
-# 在 Workspace 根目录执行
-cd /path/to/tealdeer
-
-# 启用日志功能
-cargo build --release -p tldr --features logging
-
-# 使用原生 TLS
-cargo build --release -p tldr --no-default-features --features native-tls
-```
-
-**可用 features**：
-- `default`：默认启用 rustls-with-webpki-roots
-- `logging`：启用日志功能
-- `native-tls`：使用系统原生 TLS
-- `rustls-with-webpki-roots`：使用 rustls + webpki 根证书
-- `rustls-with-native-roots`：使用 rustls + 系统根证书
-
-## 编译时间和大小
-
-### Debug 版本
-- **编译时间**：< 1 秒（增量编译）
-- **二进制大小**：约 63 MB
-
-### Release 版本
-- **编译时间**：约 8-10 秒（增量编译）
-- **二进制大小**：约 5.4 MB
-- **优化后**：约 4.4 MB（使用 `strip`）
 
 ## 优化二进制大小
 
@@ -160,29 +156,10 @@ cargo build --release -p tldr
 # 3. 使用 strip 移除调试符号
 strip target/release/tldr
 
-# 4. 检查大小
-ls -lh target/release/tldr
 ```
 
-## 测试
 
-**在 Workspace 根目录执行**：
-
-```bash
-# 1. 进入项目根目录
-cd /path/to/tealdeer
-
-# 2. 运行 CLI 测试
-cargo test -p tldr
-
-# 3. 运行所有测试
-cargo test --workspace
-
-# 4. 运行特定测试
-cargo test -p tldr test_name
-```
-
-## 安装
+## 安装 CLI
 
 ### 本地安装
 
@@ -261,14 +238,25 @@ npm install
 npm run tauri dev
 
 # 4. 构建 release
-npm run tauri build
-
+npm run tauri build # 生成所有默认格式（AppImage、deb 等）；
+npm run bundle:linux  # 使用':linux '解决的错误
+npm run bundle:linux:deb-rpm # 只生成 deb 和 rpm 包
 # 5. 输出位置
-# Linux: src-tauri/target/release/bundle/deb/
-# Linux: src-tauri/target/release/bundle/rpm/
+# Linux: /path/to/tealdeer/target/release/bundle/deb/
+# Linux: /path/to/tealdeer/target/release/bundle/rpm/
 ```
-
-**注意**：GUI 构建命令在 GUI 目录执行，不在 Workspace 根目录。
+> [!CAUTION]
+> - GUI 构建命令在 GUI 目录执行，不在 Workspace 根目录。
+> - 在目录"/path/to/tealdeer/frontend/tealdeer-widget"下执行构建命令
+> - 在使用APPImage时，可能会出现FUSE 未安装/内核模块未加载的问题，为解决该问题可以让 AppImage 直接解包后运行：
+> ```bash
+>  APPIMAGE_EXTRACT_AND_RUN=1 ./Tealdeer-Tile_0.1.0_amd64.AppImage
+> ```
+> 或者也可以使用手动解包的方式运行：
+> ```bash
+>  ./Tealdeer-Tile_0.1.0_amd64.AppImage --appimage-extract 
+>  ./squashfs-root/AppRun
+> ```
 
 ## 常见问题
 

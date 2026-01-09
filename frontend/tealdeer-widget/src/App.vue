@@ -161,30 +161,30 @@ const platformOptions = [
 
 // const invalidReason = computed(() => validateCommandString(commandInput.value));
 // const previewInvalidReason = computed(() => validateCommandString(newCommand.value));
-const newInvalidReason = computed(() => {
-  const commandReason = validateCommandString(newCommand.value);
-  if (commandReason) {
-    return commandReason;
-  }
+// const newInvalidReason = computed(() => {
+//   const commandReason = validateCommandString(newCommand.value);
+//   if (commandReason) {
+//     return commandReason;
+//   }
 
-  if (newMode.value === "page" && !summary.value.trim()) {
-    return t("validation.summaryRequired");
-  }
+//   if (newMode.value === "page" && !summary.value.trim()) {
+//     return t("validation.summaryRequired");
+//   }
 
-  const neededExamples = newMode.value === "append" ? 1 : examples.value.length;
-  if (neededExamples === 0) {
-    return t("validation.exampleRequired");
-  }
+//   const neededExamples = newMode.value === "append" ? 1 : examples.value.length;
+//   if (neededExamples === 0) {
+//     return t("validation.exampleRequired");
+//   }
 
-  for (let i = 0; i < neededExamples; i += 1) {
-    const example = examples.value[i];
-    if (!example || !example.desc.trim() || !example.cmd.trim()) {
-      return t("validation.exampleComplete");
-    }
-  }
+//   for (let i = 0; i < neededExamples; i += 1) {
+//     const example = examples.value[i];
+//     if (!example || !example.desc.trim() || !example.cmd.trim()) {
+//       return t("validation.exampleComplete");
+//     }
+//   }
 
-  return "";
-});
+//   return "";
+// });
 
 const filteredEntries = computed(() => {
   const query = manageQuery.value.trim().toLowerCase();
@@ -261,16 +261,16 @@ function showCommandRequiredHint(
   return false; // 输入有效
 }
 
-function validateCommandString(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return t("validation.commandRequired");
-  }
-  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
-    return t("validation.commandInvalidPath");
-  }
-  return "";
-}
+// function validateCommandString(value: string): string {
+//   const trimmed = value.trim();
+//   if (!trimmed) {
+//     return t("validation.commandRequired");
+//   }
+//   if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
+//     return t("validation.commandInvalidPath");
+//   }
+//   return "";
+// }
 
 function normalizeError(err: unknown): string {
   if (typeof err === "string") {
