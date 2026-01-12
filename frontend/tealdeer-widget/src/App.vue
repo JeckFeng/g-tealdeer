@@ -102,12 +102,23 @@ const commandInput = ref("");
 const language = ref("");
 const platforms = ref<string[]>(["linux", "common"]);
 const rawOutput = ref("");
-const errorMessage = ref("");
 const isLoading = ref(false);
 const viewMode = ref<"rendered" | "raw">("rendered");
-const copyLabel = ref(t('search.copy'));
 const lastCommand = ref("");
 const updateProgress = ref("");
+
+// 搜索历史和自动补全
+const searchHistory = ref<string[]>([]);
+const availableCommands = ref<string[]>([]);
+const showSuggestions = ref(false);
+const suggestions = ref<string[]>([]);
+const selectedSuggestionIndex = ref(-1);
+const commandInputRef = ref<HTMLInputElement | null>(null);
+
+// Toast 提示
+const toastMessage = ref("");
+const showToast = ref(false);
+const toastType = ref<"success" | "error">("success");
 
 // 临时 placeholder 状态
 const commandPlaceholderTemp = ref('');
@@ -120,22 +131,15 @@ const newCommand = ref("");
 const summary = ref("");
 const includePatchHeader = ref(false);
 const examples = ref<ExampleInput[]>([{ desc: "", cmd: "" }]);
-const newError = ref("");
-const newStatus = ref("");
-const newStatusType = ref<"success" | "error" | "warning">("success");
 const isCreating = ref(false);
 
 const manageEntries = ref<CustomEntry[]>([]);
 const manageLoading = ref(false);
-const manageError = ref("");
 const manageType = ref<"all" | "page" | "patch">("all");
 const manageStatus = ref<"all" | "enabled" | "disabled">("all");
 const manageQuery = ref("");
 
 const settingsLoading = ref(false);
-const settingsError = ref("");
-const settingsStatus = ref("");
-const settingsStatusType = ref<"success" | "error" | "warning">("success");
 const settingsLanguages = ref("");
 const settingsPlatforms = ref<string[]>(["linux", "common"]);
 const settingsDisableAutoUpdate = ref(false);
@@ -221,7 +225,15 @@ const renderedHtml = computed(() => {
   if (!rawOutput.value) {
     return "";
   }
-  return md.render(rawOutput.value);
+  let html = md.render(rawOutput.value);
+  
+  // 高亮搜索的命令
+  if (lastCommand.value) {
+    const commandRegex = new RegExp(`\\b${lastCommand.value}\\b`, 'gi');
+    html = html.replace(commandRegex, '<mark>$&</mark>');
+  }
+  
+  return html;
 });
 
 function tokenizeCommand(value: string): string[] {
@@ -339,50 +351,12 @@ function cleanExamples(): ExampleInput[] {
   }));
 }
 
-function resetNewStatus() {
-  newError.value = "";
-  newStatus.value = "";
-  newStatusType.value = "success";
+function setSuccessMessage(message: string) {
+  showSuccessToast(message);
 }
 
-function resetSettingsStatus() {
-  settingsError.value = "";
-  settingsStatus.value = "";
-  settingsStatusType.value = "success";
-}
-
-function setSuccessMessage(message: string, target: "new" | "settings") {
-  if (target === "new") {
-    newStatus.value = message;
-    newStatusType.value = "success";
-    newError.value = "";
-    // Auto-hide success messages after 10 seconds
-    setTimeout(() => {
-      if (newStatus.value === message) {
-        newStatus.value = "";
-      }
-    }, 10000);
-  } else {
-    settingsStatus.value = message;
-    settingsStatusType.value = "success";
-    settingsError.value = "";
-    // Auto-hide success messages after 10 seconds
-    setTimeout(() => {
-      if (settingsStatus.value === message) {
-        settingsStatus.value = "";
-      }
-    }, 10000);
-  }
-}
-
-function setErrorMessage(message: string, target: "new" | "settings") {
-  if (target === "new") {
-    newError.value = message;
-    newStatus.value = "";
-  } else {
-    settingsError.value = message;
-    settingsStatus.value = "";
-  }
+function setErrorMessage(message: string) {
+  showErrorToast(message);
 }
 
 function parseCsv(value: string): string[] {
@@ -412,12 +386,11 @@ async function resolveLogPaths() {
 
 async function loadManageEntries() {
   manageLoading.value = true;
-  manageError.value = "";
   try {
     const result = await invoke<CustomEntry[]>("scan_custom_pages");
     manageEntries.value = result;
   } catch (err) {
-    manageError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to scan custom pages: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
@@ -425,7 +398,6 @@ async function loadManageEntries() {
 }
 
 async function toggleEntry(entry: CustomEntry) {
-  manageError.value = "";
   manageLoading.value = true;
   try {
     if (entry.status === "enabled") {
@@ -434,8 +406,9 @@ async function toggleEntry(entry: CustomEntry) {
       await invoke<CustomFileInfo>("enable_custom_file", { path: entry.path });
     }
     await loadManageEntries();
+    showSuccessToast(entry.status === "enabled" ? "Disabled" : "Enabled");
   } catch (err) {
-    manageError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to update custom entry: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
@@ -443,7 +416,6 @@ async function toggleEntry(entry: CustomEntry) {
 }
 
 async function deleteEntry(entry: CustomEntry) {
-  manageError.value = "";
   const confirmed = window.confirm(
     `Delete ${entry.command_slug}? This cannot be undone.`,
   );
@@ -454,8 +426,9 @@ async function deleteEntry(entry: CustomEntry) {
   try {
     await invoke("delete_custom_file", { path: entry.path });
     await loadManageEntries();
+    showSuccessToast("Deleted successfully");
   } catch (err) {
-    manageError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to delete custom entry: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
@@ -463,18 +436,17 @@ async function deleteEntry(entry: CustomEntry) {
 }
 
 async function openEntry(entry: CustomEntry) {
-  manageError.value = "";
   try {
     await invoke("open_custom_page_file", { filePath: entry.path });
   } catch (err) {
-    manageError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to open custom entry: ${normalizeError(err)}`);
   }
 }
 
 async function loadSettings() {
   settingsLoading.value = true;
-  settingsError.value = "";
+  // cleared;
   try {
     const [appSettings, configValues, paths] = await Promise.all([
       invoke<AppSettings>("get_app_settings"),
@@ -498,7 +470,7 @@ async function loadSettings() {
     settingsArchiveSource.value = configValues.archive_source ?? "";
     showPaths.value = paths;
   } catch (err) {
-    settingsError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to load settings: ${normalizeError(err)}`);
   } finally {
     settingsLoading.value = false;
@@ -513,14 +485,13 @@ async function loadAppSettings() {
     settingsAlwaysOnTop.value = appSettings.always_on_top;
     applyTheme(normalizeTheme(appSettings.theme));
   } catch (err) {
-    settingsError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to load app settings: ${normalizeError(err)}`);
   }
 }
 
 async function saveSettings() {
   settingsLoading.value = true;
-  resetSettingsStatus();
 
   try {
     const appSettings = buildAppSettingsPayload();
@@ -551,10 +522,10 @@ async function saveSettings() {
       logUiWarn(`Failed to reload paths: ${normalizeError(pathErr)}`);
     }
     
-    setSuccessMessage("Settings saved.", "settings");
+    setSuccessMessage("Settings saved.");
     logUiInfo("Settings saved");
   } catch (err) {
-    setErrorMessage(normalizeError(err), "settings");
+    setErrorMessage(normalizeError(err));
     logUiError(`Failed to save settings: ${normalizeError(err)}`);
   } finally {
     settingsLoading.value = false;
@@ -562,25 +533,23 @@ async function saveSettings() {
 }
 
 async function openConfigFile() {
-  resetSettingsStatus();
   try {
     await invoke("open_config_file");
   } catch (err) {
-    settingsError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to open config.toml: ${normalizeError(err)}`);
   }
 }
 
 async function openLogPath(path: string | null, label: string) {
-  resetSettingsStatus();
   if (!path) {
-    settingsError.value = `${label} is not available.`;
+    showErrorToast(`${label} is not available.`);
     return;
   }
   try {
     await invoke("open_log_directory", { logDir: path });
   } catch (err) {
-    settingsError.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Failed to open ${label}: ${normalizeError(err)}`);
   }
 }
@@ -598,12 +567,11 @@ async function openWebviewLog() {
 }
 
 async function openCustomDir() {
-  resetNewStatus();
   try {
     await invoke("open_custom_pages_dir");
     logUiInfo("Opened custom pages directory");
   } catch (err) {
-    setErrorMessage(normalizeError(err), "new");
+    setErrorMessage(normalizeError(err));
     logUiError(`Failed to open custom pages directory: ${normalizeError(err)}`);
   }
 }
@@ -621,12 +589,11 @@ async function runSearch() {
   // 验证路径分隔符
   const trimmed = commandInput.value.trim();
   if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
-    errorMessage.value = t('validation.commandInvalidPath');
+    showErrorToast(t('validation.commandInvalidPath'));
     return;
   }
 
   isLoading.value = true;
-  errorMessage.value = "";
   rawOutput.value = "";
 
   try {
@@ -645,8 +612,12 @@ async function runSearch() {
     rawOutput.value = result.stdout;
     lastCommand.value = command;
     viewMode.value = "rendered";
+    
+    // 添加到搜索历史
+    addToSearchHistory(command);
+    showSuggestions.value = false;
   } catch (err) {
-    errorMessage.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Search failed: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
@@ -655,7 +626,6 @@ async function runSearch() {
 
 async function updateCache() {
   isLoading.value = true;
-  errorMessage.value = "";
   updateProgress.value = "Starting update...";
 
   try {
@@ -665,21 +635,15 @@ async function updateCache() {
     if (result.status === 0) {
       logUiInfo("Cache updated successfully");
       updateProgress.value = "";
-      errorMessage.value = "Cache updated successfully!";
-      // Set success styling for cache update message
-      setTimeout(() => {
-        if (errorMessage.value === "Cache updated successfully!") {
-          errorMessage.value = "";
-        }
-      }, 10000);
+      showSuccessToast(t('search.cacheUpdateSuccess'));
     } else {
-      errorMessage.value = result.stderr || "Update failed";
       updateProgress.value = "";
+      showErrorToast(result.stderr || "Update failed");
       logUiError(`Cache update failed: ${result.stderr}`);
     }
   } catch (err) {
-    errorMessage.value = `Update failed: ${normalizeError(err)}`;
     updateProgress.value = "";
+    showErrorToast(`Update failed: ${normalizeError(err)}`);
     logUiError(`Cache update error: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
@@ -699,12 +663,12 @@ async function runPreview() {
   // 验证路径分隔符
   const trimmed = newCommand.value.trim();
   if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
-    newError.value = t('validation.commandInvalidPath');
+    showErrorToast(t('validation.commandInvalidPath'));
     return;
   }
 
   isLoading.value = true;
-  errorMessage.value = "";
+  // cleared;
   rawOutput.value = "";
 
   try {
@@ -724,7 +688,7 @@ async function runPreview() {
     lastCommand.value = command;
     viewMode.value = "rendered";
   } catch (err) {
-    errorMessage.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
     logUiError(`Preview failed: ${normalizeError(err)}`);
   } finally {
     isLoading.value = false;
@@ -744,32 +708,31 @@ async function createCustom() {
   // 验证路径分隔符
   const trimmed = newCommand.value.trim();
   if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("..")) {
-    setErrorMessage(t('validation.commandInvalidPath'), "new");
+    setErrorMessage(t('validation.commandInvalidPath'));
     return;
   }
   
   // 验证其他字段
   if (newMode.value === "page" && !summary.value.trim()) {
-    setErrorMessage(t('validation.summaryRequired'), "new");
+    setErrorMessage(t('validation.summaryRequired'));
     return;
   }
   
   const neededExamples = newMode.value === "append" ? 1 : examples.value.length;
   if (neededExamples === 0) {
-    setErrorMessage(t('validation.exampleRequired'), "new");
+    setErrorMessage(t('validation.exampleRequired'));
     return;
   }
   
   for (let i = 0; i < neededExamples; i += 1) {
     const example = examples.value[i];
     if (!example || !example.desc.trim() || !example.cmd.trim()) {
-      setErrorMessage(t('validation.exampleComplete'), "new");
+      setErrorMessage(t('validation.exampleComplete'));
       return;
     }
   }
 
   isCreating.value = true;
-  resetNewStatus();
 
   try {
     const command = newCommand.value.trim();
@@ -782,7 +745,7 @@ async function createCustom() {
       const result = await invoke<CustomFileInfo>("create_or_overwrite_page", {
         req,
       });
-      setSuccessMessage(`Saved page to ${result.path}`, "new");
+      setSuccessMessage(`Saved page to ${result.path}`);
       logUiInfo(`Created custom page: ${command}`);
     } else if (newMode.value === "patch") {
       const req: NewPatchRequest = {
@@ -793,7 +756,7 @@ async function createCustom() {
       const result = await invoke<CustomFileInfo>("create_or_overwrite_patch", {
         req,
       });
-      setSuccessMessage(`Saved patch to ${result.path}`, "new");
+      setSuccessMessage(`Saved patch to ${result.path}`);
       logUiInfo(`Created custom patch: ${command}`);
     } else {
       const first = cleanExamples()[0];
@@ -801,15 +764,130 @@ async function createCustom() {
         command,
         example: first,
       });
-      setSuccessMessage(`Appended example in ${result.path}`, "new");
+      setSuccessMessage(`Appended example in ${result.path}`);
       logUiInfo(`Appended example: ${command}`);
     }
   } catch (err) {
-    setErrorMessage(normalizeError(err), "new");
+    setErrorMessage(normalizeError(err));
     logUiError(`Failed to create custom content: ${normalizeError(err)}`);
   } finally {
     isCreating.value = false;
   }
+}
+
+// Toast 提示
+function showToastMessage(message: string, type: "success" | "error" = "success") {
+  toastMessage.value = message;
+  toastType.value = type;
+  showToast.value = true;
+  setTimeout(() => {
+    showToast.value = false;
+  }, 5000);
+}
+
+function showSuccessToast(message: string) {
+  showToastMessage(message, "success");
+}
+
+function showErrorToast(message: string) {
+  showToastMessage(message, "error");
+}
+
+// 搜索历史管理
+function loadSearchHistory() {
+  try {
+    const saved = localStorage.getItem('tealdeer_search_history');
+    if (saved) {
+      searchHistory.value = JSON.parse(saved);
+    }
+  } catch (err) {
+    logUiWarn('Failed to load search history');
+  }
+}
+
+function saveSearchHistory() {
+  try {
+    localStorage.setItem('tealdeer_search_history', JSON.stringify(searchHistory.value));
+  } catch (err) {
+    logUiWarn('Failed to save search history');
+  }
+}
+
+function addToSearchHistory(command: string) {
+  const trimmed = command.trim();
+  if (!trimmed) return;
+  
+  // 移除重复项
+  searchHistory.value = searchHistory.value.filter(c => c !== trimmed);
+  // 添加到开头
+  searchHistory.value.unshift(trimmed);
+  // 保持最多 10 条
+  if (searchHistory.value.length > 10) {
+    searchHistory.value = searchHistory.value.slice(0, 10);
+  }
+  saveSearchHistory();
+}
+
+// 自动补全
+function updateSuggestions() {
+  const input = commandInput.value.trim().toLowerCase();
+  if (!input) {
+    suggestions.value = searchHistory.value.slice(0, 5);
+    showSuggestions.value = suggestions.value.length > 0;
+    return;
+  }
+  
+  // 模糊搜索：历史记录 + 可用命令
+  const allCommands = [...new Set([...searchHistory.value, ...availableCommands.value])];
+  suggestions.value = allCommands
+    .filter(cmd => cmd.toLowerCase().includes(input))
+    .slice(0, 8);
+  
+  showSuggestions.value = suggestions.value.length > 0;
+  selectedSuggestionIndex.value = -1;
+}
+
+function selectSuggestion(command: string) {
+  commandInput.value = command;
+  showSuggestions.value = false;
+  selectedSuggestionIndex.value = -1;
+}
+
+function handleCommandInputKeydown(event: KeyboardEvent) {
+  if (!showSuggestions.value || suggestions.value.length === 0) return;
+  
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    selectedSuggestionIndex.value = Math.min(
+      selectedSuggestionIndex.value + 1,
+      suggestions.value.length - 1
+    );
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    selectedSuggestionIndex.value = Math.max(selectedSuggestionIndex.value - 1, -1);
+  } else if (event.key === 'Enter' && selectedSuggestionIndex.value >= 0) {
+    event.preventDefault();
+    selectSuggestion(suggestions.value[selectedSuggestionIndex.value]);
+  } else if (event.key === 'Escape') {
+    showSuggestions.value = false;
+    selectedSuggestionIndex.value = -1;
+  }
+}
+
+// 加载可用命令列表
+async function loadAvailableCommands() {
+  try {
+    const result = await invoke<string[]>("list_commands");
+    availableCommands.value = result;
+  } catch (err) {
+    logUiWarn('Failed to load available commands');
+  }
+}
+
+function handleCommandInputBlur() {
+  setTimeout(() => {
+    showSuggestions.value = false;
+  }, 200);
 }
 
 async function copyRaw() {
@@ -818,12 +896,9 @@ async function copyRaw() {
   }
   try {
     await navigator.clipboard.writeText(rawOutput.value);
-    copyLabel.value = t('search.copied');
-    setTimeout(() => {
-      copyLabel.value = t('search.copy');
-    }, 1400);
+    showSuccessToast(t('search.copied'));
   } catch (err) {
-    errorMessage.value = normalizeError(err);
+    showErrorToast(normalizeError(err));
   }
 }
 
@@ -863,10 +938,21 @@ watch(
   },
 );
 
+watch(
+  () => commandInput.value,
+  () => {
+    updateSuggestions();
+  },
+);
+
 onMounted(() => {
   loadAppSettings();
   resolveLogPaths();
   logUiInfo("UI mounted");
+  
+  // 加载搜索历史和可用命令
+  loadSearchHistory();
+  loadAvailableCommands();
   
   // 监听缓存更新进度
   listen('cache-update-progress', (event) => {
@@ -991,15 +1077,29 @@ onBeforeUnmount(() => {
       </div>
       
       <form class="search-form" @submit.prevent="runSearch">
-        <label class="field">
+        <label class="field autocomplete-wrapper">
           <span>{{ t('search.command') }}</span>
           <input
+            ref="commandInputRef"
             v-model="commandInput"
             type="text"
             :placeholder="commandPlaceholder"
             :class="{ error: commandPlaceholderTemp }"
             autocomplete="off"
+            @keydown="handleCommandInputKeydown"
+            @focus="updateSuggestions"
+            @blur="handleCommandInputBlur"
           />
+          <div v-if="showSuggestions" class="suggestions">
+            <div
+              v-for="(suggestion, index) in suggestions"
+              :key="suggestion"
+              :class="['suggestion-item', { selected: index === selectedSuggestionIndex }]"
+              @click="selectSuggestion(suggestion)"
+            >
+              {{ suggestion }}
+            </div>
+          </div>
         </label>
 
         <div class="row">
@@ -1042,7 +1142,7 @@ onBeforeUnmount(() => {
             {{ t('search.previewRaw') }}
           </button>
           <button class="ghost" type="button" @click="copyRaw" :disabled="!rawOutput">
-            {{ copyLabel }}
+            {{ t('search.copy') }}
           </button>
           <button 
             class="ghost" 
@@ -1116,7 +1216,7 @@ onBeforeUnmount(() => {
             :placeholder="newCommandPlaceholder"
             :class="{ error: newCommandPlaceholderTemp }"
             autocomplete="off"
-            @input="resetNewStatus"
+            
           />
         </label>
 
@@ -1127,7 +1227,7 @@ onBeforeUnmount(() => {
             type="text"
             :placeholder="t('newPage.summaryPlaceholder')"
             autocomplete="off"
-            @input="resetNewStatus"
+            
           />
         </label>
 
@@ -1159,13 +1259,13 @@ onBeforeUnmount(() => {
               v-model="example.desc"
               type="text"
               :placeholder="t('newPage.descriptionPlaceholder')"
-              @input="resetNewStatus"
+              
             />
             <input
               v-model="example.cmd"
               type="text"
               :placeholder="t('newPage.commandPlaceholder')"
-              @input="resetNewStatus"
+              
             />
             <button
               v-if="examples.length > 1 && newMode !== 'append'"
@@ -1201,9 +1301,6 @@ onBeforeUnmount(() => {
           </button>
 
         </div>
-
-        <p v-if="newStatus" :class="['status-text', newStatusType]">{{ newStatus }}</p>
-        <p v-if="newError" class="error-text">{{ newError }}</p>
       </div>
     </section>
 
@@ -1246,10 +1343,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="manage-body">
-        <div v-if="manageError" class="alert">
-          {{ manageError }}
-        </div>
-        <div v-else-if="manageLoading" class="loading">
+        <div v-if="manageLoading" class="loading">
           {{ t('manage.scanning') }}
         </div>
         <div v-else-if="filteredEntries.length === 0" class="empty">
@@ -1294,8 +1388,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="settingsError" class="alert error">{{ settingsError }}</div>
-      <div v-else-if="settingsLoading" class="loading">{{ t('settings.loadingSettings') }}</div>
+      <div v-if="settingsLoading" class="loading">{{ t('settings.loadingSettings') }}</div>
 
       <div v-else class="settings-content">
         <!-- Content Preferences Section -->
@@ -1311,7 +1404,7 @@ onBeforeUnmount(() => {
                 v-model="settingsLanguages"
                 type="text"
                 :placeholder="t('settings.languagesPlaceholder')"
-                @input="resetSettingsStatus"
+                
               />
             </label>
 
@@ -1344,7 +1437,7 @@ onBeforeUnmount(() => {
                 v-model.number="settingsInterval"
                 type="number"
                 min="1"
-                @input="resetSettingsStatus"
+                
               />
             </label>
 
@@ -1354,7 +1447,7 @@ onBeforeUnmount(() => {
                 v-model="settingsArchiveSource"
                 type="text"
                 :placeholder="t('settings.archiveSourcePlaceholder')"
-                @input="resetSettingsStatus"
+                
               />
             </label>
             </div>
@@ -1397,7 +1490,7 @@ onBeforeUnmount(() => {
                 v-model="settingsHotkey"
                 type="text"
                 :placeholder="t('settings.globalHotkeyPlaceholder')"
-                @input="resetSettingsStatus"
+                
               />
             </label>
 
@@ -1405,7 +1498,7 @@ onBeforeUnmount(() => {
               <input
                 v-model="settingsAlwaysOnTop"
                 type="checkbox"
-                @change="resetSettingsStatus"
+                
               />
               <span>{{ t('settings.alwaysOnTop') }}</span>
             </label>
@@ -1460,7 +1553,6 @@ onBeforeUnmount(() => {
           <p v-if="settingsAlwaysOnTop" class="hint">
             {{ t('settings.alwaysOnTopWarning') }}
           </p>
-          <p v-if="settingsStatus" :class="['status-text', settingsStatusType]">{{ settingsStatus }}</p>
         </div>
 
         <!-- Save Button -->
@@ -1506,10 +1598,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="output-body">
-        <div v-if="errorMessage" :class="['alert', errorMessage.includes('successfully') ? 'success' : 'error']">
-          {{ errorMessage }}
-        </div>
-        <div v-else-if="isLoading" class="loading">
+        <div v-if="isLoading" class="loading">
           {{ t('search.fetching') }}
         </div>
         <div v-else-if="!rawOutput" class="empty">
@@ -1523,6 +1612,12 @@ onBeforeUnmount(() => {
         <pre v-else class="raw">{{ rawOutput }}</pre>
       </div>
     </section>
+
+    <!-- Toast 提示 -->
+    <div v-if="showToast" :class="['toast', `toast-${toastType}`]">
+      <span class="toast-icon">{{ toastType === 'success' ? '✓' : '✕' }}</span>
+      <span>{{ toastMessage }}</span>
+    </div>
   </main>
 </template>
 
@@ -1538,6 +1633,10 @@ onBeforeUnmount(() => {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: light;
+  
+  /* 主题切换过渡 */
+  transition: background-color 0.3s ease, color 0.3s ease;
+  
   --bg: #cbb9ff;
   --bg-alt: #f2ecff;
   --glow-1: rgba(120, 85, 255, 0.25);
@@ -1662,6 +1761,30 @@ onBeforeUnmount(() => {
 
 * {
   box-sizing: border-box;
+  /* 主题切换平滑过渡 */
+  transition: background-color 0.3s ease, 
+              color 0.3s ease, 
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* 排除已有动画的元素，避免冲突 */
+.theme-icon,
+.primary::after,
+.ghost::after,
+.toast,
+.panel,
+.suggestion-item {
+  transition: none;
+}
+
+/* 恢复这些元素的原有动画 */
+.theme-icon {
+  transition: transform 0.3s ease;
+}
+
+.suggestion-item {
+  transition: background 0.15s ease;
 }
 
 body {
@@ -1670,6 +1793,19 @@ body {
 
 a {
   color: inherit;
+}
+
+mark {
+  background: #fff3cd;
+  color: #856404;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] mark {
+  background: #664d03;
+  color: #ffecb5;
 }
 
 button,
@@ -1842,6 +1978,49 @@ input[type="text"]:focus,
 select:focus {
   outline: 2px solid var(--accent-outline);
   border-color: var(--accent-outline-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+/* 自动补全 */
+.autocomplete-wrapper {
+  position: relative;
+}
+
+.suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.suggestion-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-size: 0.9rem;
+}
+
+.suggestion-item:hover,
+.suggestion-item.selected {
+  background: var(--accent-outline);
+}
+
+.suggestion-item:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.suggestion-item:last-child {
+  border-radius: 0 0 12px 12px;
 }
 
 select option,
@@ -2486,6 +2665,86 @@ h2 {
 
   .panel {
     padding: 18px;
+  }
+}
+
+/* 按钮涟漪效果 */
+.primary,
+.ghost {
+  position: relative;
+  overflow: hidden;
+}
+
+.primary::after,
+.ghost::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.primary:active::after,
+.ghost:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+/* Toast 提示 */
+.toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-weight: 600;
+  z-index: 10000;
+  animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 4.7s;
+}
+
+.toast-success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.toast-error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.toast-icon {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
   }
 }
 </style>

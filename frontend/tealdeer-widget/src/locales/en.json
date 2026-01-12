@@ -20,7 +20,7 @@
     "running": "Running...",
     "previewRaw": "Preview Raw",
     "copy": "Copy",
-    "copied": "Copied",
+    "copied": "Copied to clipboard!",
     "updateCache": "Update Cache",
     "updating": "Updating...",
     "cacheUpdateSuccess": "Cache updated successfully!",
