@@ -3,3 +3,4 @@ pub mod tealdeer;
 pub mod settings;
 pub mod tray_hotkey;
 pub mod open_paths;
+pub mod favorites;

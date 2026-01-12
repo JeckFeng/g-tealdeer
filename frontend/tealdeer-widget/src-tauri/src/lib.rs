@@ -57,7 +57,12 @@ pub fn run() {
             backend::open_paths::open_custom_pages_dir,
             backend::open_paths::open_config_file,
             backend::open_paths::open_log_directory,
-            backend::open_paths::open_custom_page_file
+            backend::open_paths::open_custom_page_file,
+            backend::favorites::get_favorites,
+            backend::favorites::add_favorite,
+            backend::favorites::remove_favorite,
+            backend::favorites::clear_favorites,
+            backend::favorites::is_favorite
         ])
         .setup(|app| {
             if let Err(err) = backend::tray_hotkey::setup(app.handle()) {

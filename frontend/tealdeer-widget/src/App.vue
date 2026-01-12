@@ -10,6 +10,13 @@ import { saveLocale } from "./locales";
 import logoLight from "../static/logo/logo_light.svg";
 import sunIcon from "../static/ico/sun.svg";
 import moonIcon from "../static/ico/moon.svg";
+import RenderedPage from "./components/RenderedPage.vue";
+import FavoritesPanel from "./components/FavoritesPanel.vue";
+import {
+  parseTldrMarkdown,
+  normalizeCommand,
+  type ParsedPage,
+} from "./utils/tldr_parser";
 
 const { t, locale } = useI18n();
 
@@ -90,6 +97,17 @@ type NewPatchRequest = {
   include_header_in_patch: boolean;
 };
 
+type FavoriteEntry = {
+  command: string;
+  description: string;
+};
+
+type Favorites = {
+  version: number;
+  updated_at: number;
+  items: Record<string, FavoriteEntry[]>;
+};
+
 const md = new MarkdownIt({
   html: false,
   linkify: true,
@@ -119,6 +137,10 @@ const commandInputRef = ref<HTMLInputElement | null>(null);
 const toastMessage = ref("");
 const showToast = ref(false);
 const toastType = ref<"success" | "error">("success");
+
+// 收藏功能
+const favorites = ref<Favorites>({ version: 1, updated_at: 0, items: {} });
+const favoriteIndex = ref<Map<string, Set<string>>>(new Map());
 
 // 临时 placeholder 状态
 const commandPlaceholderTemp = ref('');
@@ -220,6 +242,32 @@ const themeToggleTitle = computed(() =>
   theme.value === "light" ? "Switch to dark theme" : "Switch to light theme",
 );
 const logoSrc = computed(() => logoLight);
+
+const parsedPage = computed<ParsedPage | null>(() => {
+  if (!rawOutput.value) {
+    return null;
+  }
+  try {
+    const parsed = parseTldrMarkdown(rawOutput.value);
+    if (!parsed) {
+      return null;
+    }
+    if (!parsed.examples.length && !parsed.description && !parsed.extras.length) {
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    logUiError(`Failed to parse TLDR: ${normalizeError(err)}`);
+    return null;
+  }
+});
+
+const extrasHtml = computed(() => {
+  if (!parsedPage.value?.extras.length) {
+    return "";
+  }
+  return md.render(parsedPage.value.extras.join("\n"));
+});
 
 const renderedHtml = computed(() => {
   if (!rawOutput.value) {
@@ -793,6 +841,186 @@ function showErrorToast(message: string) {
   showToastMessage(message, "error");
 }
 
+function buildFavoriteIndex() {
+  const index = new Map<string, Set<string>>();
+  for (const [pageTitle, commands] of Object.entries(favorites.value.items)) {
+    const normalizedSet = new Set(
+      commands.map((entry) => normalizeCommand(entry.command)),
+    );
+    index.set(pageTitle, normalizedSet);
+  }
+  favoriteIndex.value = index;
+}
+
+async function loadFavorites() {
+  try {
+    const result = await invoke<Favorites>('get_favorites');
+    favorites.value = result;
+    buildFavoriteIndex();
+    logUiInfo('Favorites loaded');
+  } catch (err) {
+    logUiWarn(`Failed to load favorites: ${normalizeError(err)}`);
+  }
+}
+
+function isFavorite(pageTitle: string, command: string): boolean {
+  const normalizedCmd = normalizeCommand(command);
+  return favoriteIndex.value.get(pageTitle)?.has(normalizedCmd) || false;
+}
+
+type FavoriteAddOptions = {
+  silent?: boolean;
+  skipExistsToast?: boolean;
+};
+
+async function addToFavorites(
+  pageTitle: string,
+  command: string,
+  description: string,
+  options: FavoriteAddOptions = {},
+): Promise<boolean> {
+  if (!pageTitle) {
+    if (!options.silent) {
+      showErrorToast('No command context');
+    }
+    return false;
+  }
+  
+  if (isFavorite(pageTitle, command)) {
+    if (!options.silent && !options.skipExistsToast) {
+      showErrorToast(t('settings.favoriteExists'));
+    }
+    return false;
+  }
+  
+  try {
+    const result = await invoke<Favorites>('add_favorite', {
+      pageTitle,
+      command,
+      description
+    });
+    favorites.value = result;
+    buildFavoriteIndex();
+    if (!options.silent) {
+      showSuccessToast(t('settings.favoriteAdded'));
+    }
+    return true;
+  } catch (err) {
+    if (!options.silent) {
+      showErrorToast(normalizeError(err));
+    }
+    logUiError(`Failed to add favorite: ${normalizeError(err)}`);
+    return false;
+  }
+}
+
+async function removeFromFavorites(pageTitle: string, command: string) {
+  try {
+    const result = await invoke<Favorites>('remove_favorite', {
+      pageTitle,
+      command
+    });
+    favorites.value = result;
+    buildFavoriteIndex();
+    showSuccessToast(t('settings.favoriteRemoved'));
+  } catch (err) {
+    showErrorToast(normalizeError(err));
+    logUiError(`Failed to remove favorite: ${normalizeError(err)}`);
+  }
+}
+
+async function clearAllFavorites() {
+  try {
+    const result = await invoke<Favorites>('clear_favorites');
+    favorites.value = result;
+    buildFavoriteIndex();
+    showSuccessToast('All favorites cleared');
+  } catch (err) {
+    showErrorToast(normalizeError(err));
+    logUiError(`Failed to clear favorites: ${normalizeError(err)}`);
+  }
+}
+
+// 单个命令复制/收藏处理
+async function handleCopyCommand(command: string) {
+  try {
+    await navigator.clipboard.writeText(command);
+    showSuccessToast(t('search.copied'));
+  } catch (err) {
+    showErrorToast(normalizeError(err));
+  }
+}
+
+async function handleFavoriteCommand(payload: { command: string; description: string }) {
+  const pageTitle = parsedPage.value?.title || commandInput.value;
+  await addToFavorites(pageTitle, payload.command, payload.description);
+}
+
+// 批量复制所有命令
+async function handleCopyAll() {
+  if (!parsedPage.value?.examples.length) return;
+  
+  const allCommands = parsedPage.value.examples
+    .map(ex => ex.command)
+    .join('\n');
+  
+  try {
+    await navigator.clipboard.writeText(allCommands);
+    showSuccessToast(t('search.copiedAll'));
+  } catch (err) {
+    showErrorToast(normalizeError(err));
+  }
+}
+
+// 批量收藏所有命令（仅添加未收藏的）
+async function handleFavoriteAll() {
+  if (!parsedPage.value?.examples.length) return;
+  
+  const pageTitle = parsedPage.value?.title || commandInput.value;
+  const unfavorited = parsedPage.value.examples
+    .filter(ex => !isFavorite(pageTitle, ex.command));
+  
+  if (unfavorited.length === 0) {
+    showErrorToast(t('settings.allAlreadyFavorited'));
+    return;
+  }
+  
+  let added = 0;
+  for (const ex of unfavorited) {
+    const didAdd = await addToFavorites(pageTitle, ex.command, ex.description, {
+      silent: true,
+    });
+    if (didAdd) {
+      added++;
+    }
+  }
+  
+  if (added > 0) {
+    showSuccessToast(t('settings.favoritedCount', { count: added }));
+  }
+}
+
+// FavoritesPanel 事件处理
+async function handleCopyFromFavorites(command: string) {
+  try {
+    await navigator.clipboard.writeText(command);
+    showSuccessToast(t('search.copied'));
+  } catch (err) {
+    showErrorToast(normalizeError(err));
+  }
+}
+
+async function handleRemoveFromFavorites(pageTitle: string, command: string) {
+  await removeFromFavorites(pageTitle, command);
+}
+
+async function handleClearAllFavorites() {
+  if (!confirm(t('settings.confirmClearAll'))) {
+    return;
+  }
+  await clearAllFavorites();
+}
+
 // 搜索历史管理
 function loadSearchHistory() {
   try {
@@ -952,6 +1180,7 @@ onMounted(() => {
   
   // 加载搜索历史和可用命令
   loadSearchHistory();
+  loadFavorites();
   loadAvailableCommands();
   
   // 监听缓存更新进度
@@ -1555,6 +1784,14 @@ onBeforeUnmount(() => {
           </p>
         </div>
 
+
+        <!-- My Favorites Section -->
+        <FavoritesPanel
+          :favorites="favorites"
+          @copy="handleCopyFromFavorites"
+          @remove="handleRemoveFromFavorites"
+          @clear-all="handleClearAllFavorites"
+        />
         <!-- Save Button -->
         <div class="settings-save">
           <button
@@ -1604,6 +1841,16 @@ onBeforeUnmount(() => {
         <div v-else-if="!rawOutput" class="empty">
           {{ t('search.runCommand') }}
         </div>
+        <RenderedPage
+          v-if="viewMode === 'rendered' && parsedPage"
+          :parsed-page="parsedPage"
+          :is-favorited="(cmd) => isFavorite(parsedPage?.title || commandInput, cmd)"
+          :extras-html="extrasHtml"
+          @copy="handleCopyCommand"
+          @favorite="handleFavoriteCommand"
+          @copy-all="handleCopyAll"
+          @favorite-all="handleFavoriteAll"
+        />
         <div
           v-else-if="viewMode === 'rendered'"
           class="markdown"
@@ -1670,7 +1917,7 @@ onBeforeUnmount(() => {
   --output-border: rgba(15, 31, 28, 0.08);
   --output-toggle-bg: #e9e0ff;
   --code-inline-bg: rgba(15, 31, 28, 0.08);
-  --code-block-bg: #0f1f1c;
+  --code-block-bg: #e9e0ff;
   --code-block-text: #f8f6f1;
   --alert-bg: rgba(224, 122, 95, 0.15);
   --alert-text: #8a3c28;

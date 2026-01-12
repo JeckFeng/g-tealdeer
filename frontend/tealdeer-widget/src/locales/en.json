@@ -29,7 +29,10 @@
     "runCommand": "Run a command to see the rendered page.",
     "rendered": "Rendered",
     "raw": "Raw",
-    "fetching": "Fetching page..."
+    "fetching": "Fetching page...",
+    "copiedAll": "All commands copied to clipboard",
+    "copyAll": "Copy All",
+    "favoriteAll": "Favorite All"
   },
   "newPage": {
     "title": "New Page",
@@ -109,7 +112,17 @@
     "savingButton": "Saving...",
     "saveSuccess": "Settings saved.",
     "alwaysOnTopWarning": "Always-on-top can be ignored on some Wayland desktops; disable it if stacking feels unstable.",
-    "loadingSettings": "Loading settings..."
+    "loadingSettings": "Loading settings...",
+    "myFavorites": "My Favorites",
+    "noFavorites": "No favorite commands yet",
+    "favoriteAdded": "Added to favorites",
+    "favoriteRemoved": "Removed from favorites",
+    "favoriteExists": "Already in favorites",
+    "allAlreadyFavorited": "All commands already favorited",
+    "favoritedCount": "Added {count} commands to favorites",
+    "clearAll": "Clear All",
+    "remove": "Remove",
+    "confirmClearAll": "Are you sure you want to clear all favorites? This action cannot be undone."
   },
   "common": {
     "auto": "Auto",
