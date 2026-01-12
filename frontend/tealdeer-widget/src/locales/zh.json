@@ -142,7 +142,8 @@
     "japanese": "日语",
     "german": "德语",
     "french": "法语",
-    "na": "不适用"
+    "na": "不适用",
+    "offlineMode": "离线模式，无法更新缓存"
   },
   "validation": {
     "commandRequired": "命令不能为空。",

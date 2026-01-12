@@ -121,6 +121,10 @@ const language = ref("");
 const platforms = ref<string[]>(["linux", "common"]);
 const rawOutput = ref("");
 const isLoading = ref(false);
+const isOffline = ref(!navigator.onLine);
+const showOfflineBanner = ref(false);
+let offlineBannerTimer: number | null = null;
+let offlineBannerInterval: number | null = null;
 const viewMode = ref<"rendered" | "raw">("rendered");
 const lastCommand = ref("");
 const updateProgress = ref("");
@@ -179,6 +183,8 @@ const logWebviewPath = ref<string | null>(null);
 let unlistenNavigate: (() => void) | null = null;
 let windowErrorHandler: ((event: ErrorEvent) => void) | null = null;
 let windowRejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null;
+let handleOnline: (() => void) | null = null;
+let handleOffline: (() => void) | null = null;
 
 const platformOptions = [
   { value: "linux", label: "Linux" },
@@ -673,6 +679,10 @@ async function runSearch() {
 }
 
 async function updateCache() {
+  if (isOffline.value) {
+    showErrorToast(t("common.offlineMode"));
+    return;
+  }
   isLoading.value = true;
   updateProgress.value = "Starting update...";
 
@@ -839,6 +849,43 @@ function showSuccessToast(message: string) {
 
 function showErrorToast(message: string) {
   showToastMessage(message, "error");
+}
+
+// 显示离线横幅（5秒后自动隐藏）
+function displayOfflineBanner() {
+  showOfflineBanner.value = true;
+  if (offlineBannerTimer) {
+    clearTimeout(offlineBannerTimer);
+  }
+  offlineBannerTimer = window.setTimeout(() => {
+    showOfflineBanner.value = false;
+  }, 5000);
+}
+
+// 启动离线横幅定时器（每2分钟显示一次）
+function startOfflineBannerInterval() {
+  if (offlineBannerInterval) {
+    clearInterval(offlineBannerInterval);
+  }
+  displayOfflineBanner(); // 立即显示一次
+  offlineBannerInterval = window.setInterval(() => {
+    if (isOffline.value) {
+      displayOfflineBanner();
+    }
+  }, 120000); // 2分钟 = 120000ms
+}
+
+// 停止离线横幅定时器
+function stopOfflineBannerInterval() {
+  if (offlineBannerInterval) {
+    clearInterval(offlineBannerInterval);
+    offlineBannerInterval = null;
+  }
+  if (offlineBannerTimer) {
+    clearTimeout(offlineBannerTimer);
+    offlineBannerTimer = null;
+  }
+  showOfflineBanner.value = false;
 }
 
 function buildFavoriteIndex() {
@@ -1219,6 +1266,27 @@ onMounted(() => {
     });
 });
 
+  // 监听网络状态
+  handleOnline = () => {
+    logUiInfo("Network online");
+    isOffline.value = false;
+    stopOfflineBannerInterval();
+  };
+  
+  handleOffline = () => {
+    isOffline.value = true;
+    startOfflineBannerInterval();
+    logUiWarn("Network offline");
+  };
+  
+  window.addEventListener("online", handleOnline);
+  window.addEventListener("offline", handleOffline);
+  
+  // 检查初始状态
+  if (!navigator.onLine) {
+    handleOffline();
+  }
+
 onBeforeUnmount(() => {
   // 清理定时器
   if (commandPlaceholderTimer.value) {
@@ -1239,12 +1307,28 @@ onBeforeUnmount(() => {
   if (windowRejectionHandler) {
     window.removeEventListener("unhandledrejection", windowRejectionHandler);
     windowRejectionHandler = null;
+  
+  // 清理网络监听
+  stopOfflineBannerInterval();
+  if (handleOnline) {
+    window.removeEventListener("online", handleOnline);
+    handleOnline = null;
+  }
+  if (handleOffline) {
+    window.removeEventListener("offline", handleOffline);
+    handleOffline = null;
+  }
   }
 });
 </script>
 
 <template>
   <main class="app">
+    <!-- 离线状态横幅 -->
+    <div v-if="showOfflineBanner" class="offline-banner">
+      <span class="banner-icon">⚠️</span>
+      <span>{{ t("common.offlineMode") }}</span>
+    </div>
     <header class="hero">
       <div class="brand">
         <img class="brand-logo" :src="logoSrc" alt="TLDR logo" />
@@ -1374,7 +1458,7 @@ onBeforeUnmount(() => {
             {{ t('search.copy') }}
           </button>
           <button 
-            class="ghost" 
+            class="ghost" :class="{ 'offline-state': isOffline }" 
             type="button" 
             :disabled="isLoading"
             @click="updateCache"
@@ -2994,4 +3078,54 @@ h2 {
     transform: translateY(-20px);
   }
 }
+/* 离线状态横幅 */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #fff3cd;
+  color: #856404;
+  padding: 12px 16px;
+  text-align: center;
+  z-index: 1000;
+  border-bottom: 2px solid #ffc107;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  animation: slideDown 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.banner-icon {
+  font-size: 1.2rem;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 离线状态按钮样式 */
+.offline-state {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  background: #e0e0e0 !important;
+  border: 2px dashed #ccc !important;
+  color: #666 !important;
+}
+
+.offline-state:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
 </style>

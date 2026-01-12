@@ -142,7 +142,8 @@
     "japanese": "Japanese",
     "german": "German",
     "french": "French",
-    "na": "N/A"
+    "na": "N/A",
+    "offlineMode": "Offline mode, cannot update cache"
   },
   "validation": {
     "commandRequired": "Command is required.",
