@@ -43,6 +43,14 @@ type CustomEntry = {
   size: number;
   summary: string | null;
   examples_count: number;
+  pageType?: "command" | "shortcut";
+};
+
+type SearchEntry = {
+  name: string;
+  summary: string | null;
+  scope: "command" | "shortcut";
+  source: "tldr" | "custom" | "shortcut";
 };
 
 type ShowPaths = {
@@ -51,6 +59,7 @@ type ShowPaths = {
   cache_dir: string | null;
   pages_dir: string | null;
   custom_pages_dir: string | null;
+  shortcut_pages_dir: string | null;
 };
 
 type ThemeMode = "light" | "dark";
@@ -115,6 +124,7 @@ const md = new MarkdownIt({
 });
 
 const activeTab = ref<"search" | "new" | "manage" | "settings">("search");
+const pageScope = ref<"all" | "command" | "shortcut">("all");
 
 const commandInput = ref("");
 const language = ref("");
@@ -128,6 +138,10 @@ let offlineBannerInterval: number | null = null;
 const viewMode = ref<"rendered" | "raw">("rendered");
 const lastCommand = ref("");
 const updateProgress = ref("");
+const lastRenderScope = ref<"command" | "shortcut">("command");
+
+const searchResults = ref<SearchEntry[]>([]);
+const searchResultsQuery = ref("");
 
 // 搜索历史和自动补全
 const searchHistory = ref<string[]>([]);
@@ -143,7 +157,7 @@ const showToast = ref(false);
 const toastType = ref<"success" | "error">("success");
 
 // 收藏功能
-const favorites = ref<Favorites>({ version: 1, updated_at: 0, items: {} });
+const favorites = ref<Favorites>({ version: 2, updated_at: 0, items: {} });
 const favoriteIndex = ref<Map<string, Set<string>>>(new Map());
 
 // 临时 placeholder 状态
@@ -153,6 +167,7 @@ const newCommandPlaceholderTemp = ref('');
 const newCommandPlaceholderTimer = ref<number | null>(null);
 
 const newMode = ref<"page" | "patch" | "append">("page");
+const newPageType = ref<"command" | "shortcut">("command");
 const newCommand = ref("");
 const summary = ref("");
 const includePatchHeader = ref(false);
@@ -160,6 +175,7 @@ const examples = ref<ExampleInput[]>([{ desc: "", cmd: "" }]);
 const isCreating = ref(false);
 
 const manageEntries = ref<CustomEntry[]>([]);
+const manageFilterType = ref<"all" | "command" | "shortcut" | "patch">("all");
 const manageLoading = ref(false);
 const manageType = ref<"all" | "page" | "patch">("all");
 const manageStatus = ref<"all" | "enabled" | "disabled">("all");
@@ -223,6 +239,13 @@ const platformOptions = [
 const filteredEntries = computed(() => {
   const query = manageQuery.value.trim().toLowerCase();
   return manageEntries.value.filter((entry) => {
+    // Filter by page type (command/shortcut/patch)
+    if (manageFilterType.value === "patch") {
+      if (entry.kind !== "patch") return false;
+    } else if (manageFilterType.value !== "all") {
+      if (entry.pageType !== manageFilterType.value) return false;
+    }
+    
     if (manageType.value !== "all" && entry.kind !== manageType.value) {
       return false;
     }
@@ -290,6 +313,13 @@ const renderedHtml = computed(() => {
   return html;
 });
 
+const groupedSearchResults = computed(() => {
+  return {
+    command: searchResults.value.filter((entry) => entry.scope === "command"),
+    shortcut: searchResults.value.filter((entry) => entry.scope === "shortcut"),
+  };
+});
+
 function tokenizeCommand(value: string): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
 }
@@ -352,6 +382,13 @@ function normalizeError(err: unknown): string {
   } catch {
     return "Unknown error.";
   }
+}
+
+function formatSearchSource(source: string): string {
+  if (source === "tldr") return t("search.sourceTldr");
+  if (source === "custom") return t("search.sourceCustom");
+  if (source === "shortcut") return t("search.sourceShortcut");
+  return source;
 }
 
 function logUiInfo(message: string) {
@@ -441,11 +478,19 @@ async function resolveLogPaths() {
 async function loadManageEntries() {
   manageLoading.value = true;
   try {
-    const result = await invoke<CustomEntry[]>("scan_custom_pages");
-    manageEntries.value = result;
+    const [customPages, shortcutPages] = await Promise.all([
+      invoke<CustomEntry[]>("scan_custom_pages"),
+      invoke<CustomEntry[]>("scan_shortcut_pages")
+    ]);
+    
+    // Mark entries with their source type
+    const markedCustom = customPages.map(e => ({ ...e, pageType: "command" as const }));
+    const markedShortcut = shortcutPages.map(e => ({ ...e, pageType: "shortcut" as const }));
+    
+    manageEntries.value = [...markedCustom, ...markedShortcut];
   } catch (err) {
     showErrorToast(normalizeError(err));
-    logUiError(`Failed to scan custom pages: ${normalizeError(err)}`);
+    logUiError(`Failed to scan pages: ${normalizeError(err)}`);
   } finally {
     manageLoading.value = false;
   }
@@ -454,10 +499,13 @@ async function loadManageEntries() {
 async function toggleEntry(entry: CustomEntry) {
   manageLoading.value = true;
   try {
+    const isShortcut = entry.pageType === "shortcut";
     if (entry.status === "enabled") {
-      await invoke<CustomFileInfo>("disable_custom_file", { path: entry.path });
+      const cmd = isShortcut ? "disable_shortcut_file" : "disable_custom_file";
+      await invoke<CustomFileInfo>(cmd, { path: entry.path });
     } else {
-      await invoke<CustomFileInfo>("enable_custom_file", { path: entry.path });
+      const cmd = isShortcut ? "enable_shortcut_file" : "enable_custom_file";
+      await invoke<CustomFileInfo>(cmd, { path: entry.path });
     }
     await loadManageEntries();
     showSuccessToast(entry.status === "enabled" ? "Disabled" : "Enabled");
@@ -478,7 +526,8 @@ async function deleteEntry(entry: CustomEntry) {
   }
   manageLoading.value = true;
   try {
-    await invoke("delete_custom_file", { path: entry.path });
+    const cmd = entry.pageType === "shortcut" ? "delete_shortcut_file" : "delete_custom_file";
+    await invoke(cmd, { path: entry.path });
     await loadManageEntries();
     showSuccessToast("Deleted successfully");
   } catch (err) {
@@ -491,7 +540,8 @@ async function deleteEntry(entry: CustomEntry) {
 
 async function openEntry(entry: CustomEntry) {
   try {
-    await invoke("open_custom_page_file", { filePath: entry.path });
+    const cmd = entry.pageType === "shortcut" ? "open_shortcut_page_file" : "open_custom_page_file";
+    await invoke(cmd, { filePath: entry.path });
   } catch (err) {
     showErrorToast(normalizeError(err));
     logUiError(`Failed to open custom entry: ${normalizeError(err)}`);
@@ -622,11 +672,44 @@ async function openWebviewLog() {
 
 async function openCustomDir() {
   try {
-    await invoke("open_custom_pages_dir");
-    logUiInfo("Opened custom pages directory");
+    const commandName =
+      newPageType.value === "shortcut"
+        ? "open_shortcut_pages_dir"
+        : "open_custom_pages_dir";
+    await invoke(commandName);
+    logUiInfo("Opened pages directory");
   } catch (err) {
     setErrorMessage(normalizeError(err));
-    logUiError(`Failed to open custom pages directory: ${normalizeError(err)}`);
+    logUiError(`Failed to open pages directory: ${normalizeError(err)}`);
+  }
+}
+
+async function renderCommandWithScope(command: string, scope: "command" | "shortcut") {
+  isLoading.value = true;
+  rawOutput.value = "";
+
+  try {
+    const tokens = tokenizeCommand(command);
+    logUiInfo(`Render run (${scope}): ${command}`);
+    const result = await invoke<RenderResult>("render_tldr", {
+      commandTokens: tokens,
+      scope,
+      language: language.value || null,
+      platforms: platforms.value,
+      raw: true,
+      color: settingsColor.value || null,
+      pager: false,
+      noAutoUpdate: false,
+    });
+    rawOutput.value = result.stdout;
+    lastCommand.value = command;
+    lastRenderScope.value = scope;
+    viewMode.value = "rendered";
+  } catch (err) {
+    showErrorToast(normalizeError(err));
+    logUiError(`Render failed: ${normalizeError(err)}`);
+  } finally {
+    isLoading.value = false;
   }
 }
 
@@ -647,35 +730,40 @@ async function runSearch() {
     return;
   }
 
-  isLoading.value = true;
-  rawOutput.value = "";
-
   try {
     const command = commandInput.value.trim();
-    const tokens = tokenizeCommand(command);
     logUiInfo(`Search run: ${command}`);
-    const result = await invoke<RenderResult>("render_tldr", {
-      commandTokens: tokens,
-      language: language.value || null,
-      platforms: platforms.value,
-      raw: true,
-      color: settingsColor.value || null,
-      pager: false,
-      noAutoUpdate: false,
-    });
-    rawOutput.value = result.stdout;
-    lastCommand.value = command;
-    viewMode.value = "rendered";
-    
-    // 添加到搜索历史
+    if (pageScope.value === "all") {
+      isLoading.value = true;
+      rawOutput.value = "";
+      searchResults.value = [];
+      searchResultsQuery.value = command;
+      const result = await invoke<SearchEntry[]>("search_pages", {
+        query: command,
+        scope: "all",
+      });
+      searchResults.value = result;
+    } else {
+      searchResults.value = [];
+      searchResultsQuery.value = "";
+      await renderCommandWithScope(command, pageScope.value);
+    }
+
     addToSearchHistory(command);
     showSuggestions.value = false;
   } catch (err) {
     showErrorToast(normalizeError(err));
     logUiError(`Search failed: ${normalizeError(err)}`);
   } finally {
-    isLoading.value = false;
+    if (pageScope.value === "all") {
+      isLoading.value = false;
+    }
   }
+}
+
+async function selectSearchResult(entry: SearchEntry) {
+  commandInput.value = entry.name;
+  await renderCommandWithScope(entry.name, entry.scope);
 }
 
 async function updateCache() {
@@ -725,31 +813,13 @@ async function runPreview() {
     return;
   }
 
-  isLoading.value = true;
-  // cleared;
-  rawOutput.value = "";
-
   try {
     const command = newCommand.value.trim();
-    const tokens = tokenizeCommand(command);
     logUiInfo(`Preview run: ${command}`);
-    const result = await invoke<RenderResult>("preview_effective_output", {
-      commandTokens: tokens,
-      language: language.value || null,
-      platforms: platforms.value,
-      raw: true,
-      color: settingsColor.value || null,
-      pager: false,
-      noAutoUpdate: false,
-    });
-    rawOutput.value = result.stdout;
-    lastCommand.value = command;
-    viewMode.value = "rendered";
+    await renderCommandWithScope(command, newPageType.value);
   } catch (err) {
     showErrorToast(normalizeError(err));
     logUiError(`Preview failed: ${normalizeError(err)}`);
-  } finally {
-    isLoading.value = false;
   }
 }
 
@@ -800,7 +870,10 @@ async function createCustom() {
         summary: summary.value.trim(),
         examples: cleanExamples(),
       };
-      const result = await invoke<CustomFileInfo>("create_or_overwrite_page", {
+      const commandName = newPageType.value === "shortcut" 
+        ? "create_or_overwrite_shortcut_page" 
+        : "create_or_overwrite_page";
+      const result = await invoke<CustomFileInfo>(commandName, {
         req,
       });
       setSuccessMessage(`Saved page to ${result.path}`);
@@ -811,14 +884,20 @@ async function createCustom() {
         examples: cleanExamples(),
         include_header_in_patch: includePatchHeader.value,
       };
-      const result = await invoke<CustomFileInfo>("create_or_overwrite_patch", {
+      const commandName = newPageType.value === "shortcut"
+        ? "create_or_overwrite_shortcut_patch"
+        : "create_or_overwrite_patch";
+      const result = await invoke<CustomFileInfo>(commandName, {
         req,
       });
       setSuccessMessage(`Saved patch to ${result.path}`);
       logUiInfo(`Created custom patch: ${command}`);
     } else {
       const first = cleanExamples()[0];
-      const result = await invoke<CustomFileInfo>("append_example_to_page", {
+      const commandName = newPageType.value === "shortcut"
+        ? "append_example_to_shortcut_page"
+        : "append_example_to_page";
+      const result = await invoke<CustomFileInfo>(commandName, {
         command,
         example: first,
       });
@@ -888,6 +967,27 @@ function stopOfflineBannerInterval() {
   showOfflineBanner.value = false;
 }
 
+
+// Helper function to build favorite key with scope
+function buildFavoriteKey(pageTitle: string, scope?: string): string {
+  // If pageTitle already has scope prefix, return as is
+  if (pageTitle.includes('::')) {
+    return pageTitle;
+  }
+  
+  // Determine scope: use provided scope, or infer from pageScope/newPageType
+  const inferredScope =
+    activeTab.value === 'search'
+      ? (pageScope.value === 'all' ? lastRenderScope.value : pageScope.value)
+      : activeTab.value === 'new'
+        ? newPageType.value
+        : 'command';
+  const currentScope = scope || inferredScope;
+  const finalScope = currentScope === 'all' ? lastRenderScope.value : currentScope;
+  
+  return `${finalScope}::${pageTitle}`;
+}
+
 function buildFavoriteIndex() {
   const index = new Map<string, Set<string>>();
   for (const [pageTitle, commands] of Object.entries(favorites.value.items)) {
@@ -910,14 +1010,16 @@ async function loadFavorites() {
   }
 }
 
-function isFavorite(pageTitle: string, command: string): boolean {
+function isFavorite(pageTitle: string, command: string, scope?: string): boolean {
+  const favoriteKey = buildFavoriteKey(pageTitle, scope);
   const normalizedCmd = normalizeCommand(command);
-  return favoriteIndex.value.get(pageTitle)?.has(normalizedCmd) || false;
+  return favoriteIndex.value.get(favoriteKey)?.has(normalizedCmd) || false;
 }
 
 type FavoriteAddOptions = {
   silent?: boolean;
   skipExistsToast?: boolean;
+  scope?: string;
 };
 
 async function addToFavorites(
@@ -933,7 +1035,10 @@ async function addToFavorites(
     return false;
   }
   
-  if (isFavorite(pageTitle, command)) {
+  // Build key with scope prefix
+  const favoriteKey = buildFavoriteKey(pageTitle, options.scope);
+  
+  if (isFavorite(favoriteKey, command)) {
     if (!options.silent && !options.skipExistsToast) {
       showErrorToast(t('settings.favoriteExists'));
     }
@@ -942,7 +1047,7 @@ async function addToFavorites(
   
   try {
     const result = await invoke<Favorites>('add_favorite', {
-      pageTitle,
+      pageTitle: favoriteKey,
       command,
       description
     });
@@ -1000,7 +1105,9 @@ async function handleCopyCommand(command: string) {
 
 async function handleFavoriteCommand(payload: { command: string; description: string }) {
   const pageTitle = parsedPage.value?.title || commandInput.value;
-  await addToFavorites(pageTitle, payload.command, payload.description);
+  await addToFavorites(pageTitle, payload.command, payload.description, {
+    scope: lastRenderScope.value,
+  });
 }
 
 // 批量复制所有命令
@@ -1024,8 +1131,9 @@ async function handleFavoriteAll() {
   if (!parsedPage.value?.examples.length) return;
   
   const pageTitle = parsedPage.value?.title || commandInput.value;
+  const scope = lastRenderScope.value;
   const unfavorited = parsedPage.value.examples
-    .filter(ex => !isFavorite(pageTitle, ex.command));
+    .filter(ex => !isFavorite(pageTitle, ex.command, scope));
   
   if (unfavorited.length === 0) {
     showErrorToast(t('settings.allAlreadyFavorited'));
@@ -1036,6 +1144,7 @@ async function handleFavoriteAll() {
   for (const ex of unfavorited) {
     const didAdd = await addToFavorites(pageTitle, ex.command, ex.description, {
       silent: true,
+      scope,
     });
     if (didAdd) {
       added++;
@@ -1201,6 +1310,16 @@ watch(
     }
     if (value === "settings") {
       loadSettings();
+    }
+  },
+);
+
+watch(
+  () => pageScope.value,
+  (value) => {
+    if (value !== "all") {
+      searchResults.value = [];
+      searchResultsQuery.value = "";
     }
   },
 );
@@ -1389,6 +1508,30 @@ onBeforeUnmount(() => {
         <p>{{ t('search.description') }}</p>
       </div>
       
+      <div class="page-type-selector">
+        <button
+          type="button"
+          :class="['type-btn', { active: pageScope === 'all' }]"
+          @click="pageScope = 'all'"
+        >
+          {{ t('search.all') }}
+        </button>
+        <button
+          type="button"
+          :class="['type-btn', { active: pageScope === 'command' }]"
+          @click="pageScope = 'command'"
+        >
+          {{ t('search.commands') }}
+        </button>
+        <button
+          type="button"
+          :class="['type-btn', { active: pageScope === 'shortcut' }]"
+          @click="pageScope = 'shortcut'"
+        >
+          {{ t('search.shortcuts') }}
+        </button>
+      </div>
+      
       <form class="search-form" @submit.prevent="runSearch">
         <label class="field autocomplete-wrapper">
           <span>{{ t('search.command') }}</span>
@@ -1469,12 +1612,71 @@ onBeforeUnmount(() => {
           <p v-if="updateProgress" class="update-progress">{{ updateProgress }}</p>
         </div>
       </form>
+
+      <div v-if="pageScope === 'all' && searchResultsQuery" class="search-results">
+        <div v-if="searchResults.length === 0" class="empty">
+          {{ t('search.noResults') }}
+        </div>
+        <div v-else>
+          <div
+            v-if="groupedSearchResults.command.length"
+            class="result-group"
+          >
+            <h3>{{ t('search.commands') }}</h3>
+            <button
+              v-for="entry in groupedSearchResults.command"
+              :key="`command-${entry.name}-${entry.source}`"
+              type="button"
+              class="result-item"
+              @click="selectSearchResult(entry)"
+            >
+              <div class="result-main">
+                <span class="result-title">{{ entry.name }}</span>
+                <span v-if="entry.summary" class="result-summary">{{ entry.summary }}</span>
+              </div>
+              <span class="result-source">{{ formatSearchSource(entry.source) }}</span>
+            </button>
+          </div>
+
+          <div
+            v-if="groupedSearchResults.shortcut.length"
+            class="result-group"
+          >
+            <h3>{{ t('search.shortcuts') }}</h3>
+            <button
+              v-for="entry in groupedSearchResults.shortcut"
+              :key="`shortcut-${entry.name}-${entry.source}`"
+              type="button"
+              class="result-item"
+              @click="selectSearchResult(entry)"
+            >
+              <div class="result-main">
+                <span class="result-title">{{ entry.name }}</span>
+                <span v-if="entry.summary" class="result-summary">{{ entry.summary }}</span>
+              </div>
+              <span class="result-source">{{ formatSearchSource(entry.source) }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section v-else-if="activeTab === 'new'" class="panel form-panel">
       <div class="page-header">
         <h2>{{ t('newPage.title') }}</h2>
         <p>{{ t('newPage.description') }}</p>
+      </div>
+
+      <div class="page-type-selector">
+        <label>{{ t('newPage.pageType') }}:</label>
+        <label class="type-radio">
+          <input v-model="newPageType" type="radio" value="command" />
+          <span>{{ t('newPage.commandPage') }}</span>
+        </label>
+        <label class="type-radio">
+          <input v-model="newPageType" type="radio" value="shortcut" />
+          <span>{{ t('newPage.shortcutPage') }}</span>
+        </label>
       </div>
 
       <div class="mode-switch">
@@ -1625,6 +1827,15 @@ onBeforeUnmount(() => {
 
       <div class="manage-controls">
         <label class="field">
+          <span>{{ t('manage.pageType') }}</span>
+          <select v-model="manageFilterType">
+            <option value="all">{{ t('manage.filterAll') }}</option>
+            <option value="command">{{ t('manage.filterCommand') }}</option>
+            <option value="shortcut">{{ t('manage.filterShortcut') }}</option>
+            <option value="patch">{{ t('manage.filterPatch') }}</option>
+          </select>
+        </label>
+        <label class="field">
           <span>{{ t('manage.type') }}</span>
           <select v-model="manageType">
             <option value="all">{{ t('common.all') }}</option>
@@ -1667,6 +1878,9 @@ onBeforeUnmount(() => {
             <div class="manage-main">
               <div class="manage-title">
                 <span>{{ entry.display_command || entry.command_slug }}</span>
+                <span v-if="entry.pageType" class="tag page-type">
+                  {{ entry.pageType === 'shortcut' ? t('manage.typeShortcut') : t('manage.typeCommand') }}
+                </span>
                 <span class="tag">{{ entry.kind }}</span>
                 <span class="tag" :class="entry.status">{{ entry.status }}</span>
               </div>
@@ -1854,6 +2068,7 @@ onBeforeUnmount(() => {
               <div class="info-item"><strong>{{ t('settings.cacheDir') }}:</strong> {{ showPaths?.cache_dir || "N/A" }}</div>
               <div class="info-item"><strong>{{ t('settings.pagesDir') }}:</strong> {{ showPaths?.pages_dir || "N/A" }}</div>
               <div class="info-item"><strong>{{ t('settings.customPagesDir') }}:</strong> {{ showPaths?.custom_pages_dir || "N/A" }}</div>
+              <div class="info-item"><strong>{{ t('settings.shortcutPagesDir') }}:</strong> {{ showPaths?.shortcut_pages_dir || "N/A" }}</div>
               <div class="info-item"><strong>{{ t('settings.logDir') }}:</strong> {{ logDir || "N/A" }}</div>
               <div class="info-item"><strong>{{ t('settings.rustLog') }}:</strong> {{ logRustPath || "N/A" }}</div>
               <div class="info-item"><strong>{{ t('settings.webviewLog') }}:</strong> {{ logWebviewPath || "N/A" }}</div>
@@ -1923,12 +2138,16 @@ onBeforeUnmount(() => {
           {{ t('search.fetching') }}
         </div>
         <div v-else-if="!rawOutput" class="empty">
-          {{ t('search.runCommand') }}
+          {{
+            activeTab === 'search' && pageScope === 'all' && searchResultsQuery
+              ? t('search.selectResult')
+              : t('search.runCommand')
+          }}
         </div>
         <RenderedPage
           v-if="viewMode === 'rendered' && parsedPage"
           :parsed-page="parsedPage"
-          :is-favorited="(cmd) => isFavorite(parsedPage?.title || commandInput, cmd)"
+          :is-favorited="(cmd) => isFavorite(parsedPage?.title || commandInput, cmd, lastRenderScope)"
           :extras-html="extrasHtml"
           @copy="handleCopyCommand"
           @favorite="handleFavoriteCommand"
@@ -2267,6 +2486,62 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.search-results {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.result-group h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.result-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.result-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.result-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.result-summary {
+  font-size: 0.85rem;
+  color: var(--text-muted-strong);
+}
+
+.result-source {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .field {
@@ -3129,3 +3404,64 @@ h2 {
 }
 
 </style>
+
+/* Page Type Selector */
+.page-type-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.page-type-selector label {
+  font-weight: 600;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.type-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-btn:hover {
+  background: var(--bg-hover);
+}
+
+.type-btn.active {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.type-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-radio:hover {
+  background: var(--bg-hover);
+}
+
+.type-radio input[type="radio"] {
+  margin: 0;
+}
+
+.tag.page-type {
+  background: var(--primary-color);
+  color: white;
+}

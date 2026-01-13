@@ -248,3 +248,16 @@ mod test {
         );
     }
 }
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PageScope {
+    Command,
+    Shortcut,
+}
+
+impl Default for PageScope {
+    fn default() -> Self {
+        Self::Command
+    }
+}

@@ -31,15 +31,17 @@ Tealdeer-Tile provides quick access to community-maintained help pages for comma
 - 🔄 **Auto-update**: Automatic cache updates
 - 🌍 **Multi-language**: Support for multiple languages
 - 🔍 **Fuzzy Search**: Find commands even with typos
+- ⌨️ **Shortcut Pages**: Manage keyboard shortcuts documentation
 
 ### Desktop App (`tealdeer-tile`)
 - 🖥️ **Modern UI**: Clean interface built with Vue 3
 - 🔍 **Search & Preview**: Real-time command search and rendering
 - ✏️ **Custom Pages**: Create custom documentation for your commands
+- ⌨️ **Shortcut Pages**: Manage keyboard shortcuts separately from commands
 - 📝 **Patch Support**: Extend existing pages with additional examples
 - 🌓 **Dark Mode**: Light and dark theme support
 - 🌐 **i18n**: English and Chinese interface
-- ⌨️ **Global Hotkey**: Quick access with keyboard shortcut (Ctrl+Alt+T)
+- 🔐 **Global Hotkey**: Quick access with keyboard shortcut (Ctrl+Alt+T)
 - 📌 **System Tray**: Always accessible from system tray
 
 ## Build from Source
@@ -133,6 +135,10 @@ tldr tar              # View command
 tldr --update         # Update cache
 tldr --list           # List all commands
 tldr --search extract # Search commands
+
+# Shortcut pages
+tldr --shortcut vim   # View keyboard shortcuts
+tldr --shortcut --list # List all shortcut pages
 ```
 
 ### Desktop App
@@ -146,12 +152,40 @@ tealdeer_tile         # Launch app
 
 ### Custom Pages
 
-Custom pages are stored in `~/.local/share/com.xian00.tealdeer-tile/pages/`
+Custom pages are stored in:
+- Desktop app: `~/.local/share/com.xian00.tealdeer-tile/pages/`
+- CLI: `~/.local/share/tealdeer/pages/`
 
 **File naming:**
 - Custom page: `command.page`
 - Patch: `command.patch`
 - Disabled: `command.page.disabled`
+
+### Shortcut Pages
+
+Shortcut pages are stored in:
+- Desktop app: `~/.local/share/com.xian00.tealdeer-tile/shortcut_pages/`
+- CLI: `~/.local/share/tealdeer/shortcut_pages/`
+
+**File naming:**
+- Shortcut page: `vim.page.md`
+- Shortcut patch: `vim.patch.md`
+- Disabled: `vim.page.md.disabled`
+
+**Example shortcut page:**
+```markdown
+# vim
+
+> Vim editor keyboard shortcuts
+
+- Save file:
+
+`Ctrl + O`
+
+- Exit editor:
+
+`Ctrl + X`
+```
 
 ### Configuration
 
@@ -175,6 +209,7 @@ Custom pages are stored in `~/.local/share/com.xian00.tealdeer-tile/pages/`
 - [Build Instructions](docs/Build_CLI.md)
 - [Configuration Guide](docs/src/config.md)
 - [Custom Pages Guide](docs/src/custom_pages.md)
+- [Shortcut Pages Guide](SHORTCUT_PAGES_QUICKSTART.md)
 
 ## Contributing
 

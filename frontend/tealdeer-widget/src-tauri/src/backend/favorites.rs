@@ -43,7 +43,7 @@ pub struct Favorites {
 impl Default for Favorites {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             updated_at: current_timestamp(),
             items: HashMap::new(),
         }
@@ -70,7 +70,7 @@ impl From<FavoriteEntryRaw> for FavoriteEntry {
 
 impl From<FavoritesRaw> for Favorites {
     fn from(raw: FavoritesRaw) -> Self {
-        let version = if raw.version == 0 { 1 } else { raw.version };
+        let version = if raw.version == 0 { 2 } else { raw.version };
         let updated_at = if raw.updated_at == 0 {
             current_timestamp()
         } else {

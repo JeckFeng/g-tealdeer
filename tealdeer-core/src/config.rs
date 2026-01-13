@@ -219,6 +219,8 @@ struct RawDirectoriesConfig {
     pub cache_dir: Option<PathBuf>,
     #[serde(default)]
     pub custom_pages_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub shortcut_pages_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -355,6 +357,7 @@ impl fmt::Display for PathWithSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoriesConfig {
     pub cache_dir: PathWithSource,
+    pub shortcut_pages_dir: Option<PathWithSource>,
     pub custom_pages_dir: Option<PathWithSource>,
 }
 
@@ -557,8 +560,27 @@ impl<'a> Config<'a> {
                     })
                     .ok()
             });
+        let shortcut_pages_dir = raw_config
+            .directories
+            .shortcut_pages_dir
+            .as_ref()
+            .map(|path| PathWithSource {
+                path: relative_path_root.join(path),
+                source: PathSource::ConfigFile,
+            })
+            .or_else(|| {
+                get_app_root(AppDataType::UserData, &crate::APP_INFO)
+                    .map(|path| {
+                        PathWithSource {
+                            path: path.join("shortcut_pages").join(""),
+                            source: PathSource::OsConvention,
+                        }
+                    })
+                    .ok()
+            });
         let directories = DirectoriesConfig {
             cache_dir,
+            shortcut_pages_dir,
             custom_pages_dir,
         };
 

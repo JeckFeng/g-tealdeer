@@ -148,6 +148,12 @@ tldr --list
 
 # 搜索命令
 tldr --search extract
+
+# 查看快捷键页面
+tldr --shortcut vim
+
+# 列出所有快捷键页面
+tldr --shortcut --list
 ```
 
 ### 桌面应用
@@ -174,10 +180,32 @@ tealdeer_tile
 ~/.local/share/com.xian00.tealdeer-tile/pages/
 ```
 
+CLI 默认目录：
+```
+~/.local/share/tealdeer/pages/
+```
+
 **文件命名：**
 - 自定义页面：`command.page`
 - 补丁：`command.patch`
 - 禁用：`command.page.disabled`
+
+### 快捷键页面
+
+快捷键页面存储在：
+```
+~/.local/share/com.xian00.tealdeer-tile/shortcut_pages/
+```
+
+CLI 默认目录：
+```
+~/.local/share/tealdeer/shortcut_pages/
+```
+
+**文件命名：**
+- 快捷键页面：`vim.page.md`
+- 快捷键补丁：`vim.patch.md`
+- 禁用：`vim.page.md.disabled`
 
 ### 配置
 

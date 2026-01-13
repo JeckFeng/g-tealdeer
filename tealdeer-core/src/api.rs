@@ -19,6 +19,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct RunArgs {
+    pub scope: crate::types::PageScope,
     pub command: Vec<String>,
     pub list: bool,
     pub edit_page: bool,
@@ -54,6 +55,7 @@ pub struct ShowPaths {
     pub config_path: Option<String>,
     pub cache_dir: Option<String>,
     pub pages_dir: Option<String>,
+    pub shortcut_pages_dir: Option<String>,
     pub custom_pages_dir: Option<String>,
 }
 
@@ -126,11 +128,11 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
         config.style = crate::config::StyleConfig::default();
     }
 
-    let custom_pages_dir = config
-        .directories
-        .custom_pages_dir
-        .as_ref()
-        .map(PathWithSource::path);
+    let custom_pages_dir = match args.scope {
+        crate::types::PageScope::Command => config.directories.custom_pages_dir.as_ref(),
+        crate::types::PageScope::Shortcut => config.directories.shortcut_pages_dir.as_ref(),
+    }
+    .map(PathWithSource::path);
 
     // Note: According to the TLDR client spec, page names must be transparently
     // lowercased before lookup:
@@ -182,13 +184,22 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
         None => (&config.search.languages, &config.updates.download_languages),
     };
 
+    let shortcut_scope = matches!(args.scope, crate::types::PageScope::Shortcut);
+
+    // For shortcut scope, use a dummy path to skip TLDR cache lookup
+    let dummy_pages_dir = config.directories.cache_dir.path().join("__shortcut_only__");
+    let pages_directory = match args.scope {
+        crate::types::PageScope::Command => config.directories.cache_dir.path().join(TLDR_PAGES_DIR),
+        crate::types::PageScope::Shortcut => {
+            // Create the dummy directory if it doesn't exist
+            let _ = std::fs::create_dir_all(&dummy_pages_dir);
+            dummy_pages_dir
+        }
+    };
+    
     let cache_config = CacheConfig {
-        pages_directory: &config.directories.cache_dir.path().join(TLDR_PAGES_DIR),
-        custom_pages_directory: config
-            .directories
-            .custom_pages_dir
-            .as_ref()
-            .map(PathWithSource::path),
+        pages_directory: &pages_directory,
+        custom_pages_directory: custom_pages_dir,
         platforms: &config.search.platforms,
         search_languages,
         download_languages,
@@ -211,7 +222,11 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
         return Ok(0);
     }
 
-    let cache = if args.update || config.updates.auto_update && !args.no_auto_update {
+    let cache = if shortcut_scope {
+        // Shortcut scope never downloads or updates cache data.
+        let (cache, _created) = Cache::open_or_create(cache_config)?;
+        cache
+    } else if args.update || config.updates.auto_update && !args.no_auto_update {
         let (mut cache, was_created) = Cache::open_or_create(cache_config)?;
         if was_created {
             push_stderr_line(
@@ -405,12 +420,17 @@ fn format_show_paths(config: &Config) -> (ShowPaths, String) {
         Some(ref path_with_source) => path_with_source.to_string(),
         None => "[None]".to_string(),
     };
+    let shortcut_pages_dir_display = match config.directories.shortcut_pages_dir {
+        Some(ref path_with_source) => path_with_source.to_string(),
+        None => "[None]".to_string(),
+    };
 
     let formatted = format!(
         "Config dir:       {config_dir_display}\n\
 Config path:      {config_path_display}\n\
 Cache dir:        {cache_dir_display}\n\
 Pages dir:        {pages_dir_display}\n\
+Shortcut pages dir: {shortcut_pages_dir_display}\n\
 Custom pages dir: {custom_pages_dir_display}\n"
     );
 
@@ -419,6 +439,7 @@ Custom pages dir: {custom_pages_dir_display}\n"
         config_path: normalize_show_path_value(&config_path_display),
         cache_dir: normalize_show_path_value(&cache_dir_display),
         pages_dir: normalize_show_path_value(&pages_dir_display),
+        shortcut_pages_dir: normalize_show_path_value(&shortcut_pages_dir_display),
         custom_pages_dir: normalize_show_path_value(&custom_pages_dir_display),
     };
 

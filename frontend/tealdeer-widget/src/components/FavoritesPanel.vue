@@ -16,44 +16,95 @@
     </div>
 
     <div v-else class="favorites-list">
-      <div 
-        v-for="(entries, pageTitle) in favorites.items" 
-        :key="pageTitle"
-        class="favorite-group"
-      >
-        <div class="group-header" @click="toggleGroup(pageTitle)">
-          <span class="toggle-icon">{{ isExpanded(pageTitle) ? '▼' : '▶' }}</span>
-          <span class="group-title">{{ pageTitle }}</span>
-          <span class="group-count">({{ entries.length }})</span>
-        </div>
-        
-        <div v-show="isExpanded(pageTitle)" class="group-commands">
-          <div 
-            v-for="(entry, idx) in entries" 
-            :key="`${entry.command}-${idx}`"
-            class="command-item"
-          >
-            <div class="command-info">
-              <p v-if="entry.description" class="command-desc">
-                {{ entry.description }}
-              </p>
-              <code class="command-text">{{ entry.command }}</code>
+      <!-- Commands Section -->
+      <div v-if="Object.keys(groupedByScope.command).length > 0" class="scope-section">
+        <h4 class="scope-header">📦 {{ t('search.commands') }}</h4>
+        <div 
+          v-for="(entries, pageTitle) in groupedByScope.command" 
+          :key="`command::${pageTitle}`"
+          class="favorite-group"
+        >
+          <div class="group-header" @click="toggleGroup(`command::${pageTitle}`)">
+            <span class="toggle-icon">{{ isExpanded(`command::${pageTitle}`) ? '▼' : '▶' }}</span>
+            <span class="group-title">{{ pageTitle }}</span>
+            <span class="group-count">({{ entries.length }})</span>
+          </div>
+          
+          <div v-show="isExpanded(`command::${pageTitle}`)" class="group-commands">
+            <div 
+              v-for="(entry, idx) in entries" 
+              :key="`${entry.command}-${idx}`"
+              class="command-item"
+            >
+              <div class="command-info">
+                <p v-if="entry.description" class="command-desc">
+                  {{ entry.description }}
+                </p>
+                <code class="command-text">{{ entry.command }}</code>
+              </div>
+              <div class="command-actions">
+                <button 
+                  class="action-btn copy-btn"
+                  :title="t('search.copy')"
+                  @click="$emit('copy', entry.command)"
+                >
+                  📋
+                </button>
+                <button 
+                  class="action-btn remove-btn"
+                  :title="t('settings.remove')"
+                  @click="$emit('remove', `command::${pageTitle}`, entry.command)"
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
-            <div class="command-actions">
-              <button 
-                class="action-btn copy-btn"
-                :title="t('search.copy')"
-                @click="$emit('copy', entry.command)"
-              >
-                📋
-              </button>
-              <button 
-                class="action-btn remove-btn"
-                :title="t('settings.remove')"
-                @click="$emit('remove', pageTitle, entry.command)"
-              >
-                🗑️
-              </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shortcut Keys Section -->
+      <div v-if="Object.keys(groupedByScope.shortcut).length > 0" class="scope-section">
+        <h4 class="scope-header">⌨️ {{ t('search.shortcuts') }}</h4>
+        <div 
+          v-for="(entries, pageTitle) in groupedByScope.shortcut" 
+          :key="`shortcut::${pageTitle}`"
+          class="favorite-group"
+        >
+          <div class="group-header" @click="toggleGroup(`shortcut::${pageTitle}`)">
+            <span class="toggle-icon">{{ isExpanded(`shortcut::${pageTitle}`) ? '▼' : '▶' }}</span>
+            <span class="group-title">{{ pageTitle }}</span>
+            <span class="group-count">({{ entries.length }})</span>
+          </div>
+          
+          <div v-show="isExpanded(`shortcut::${pageTitle}`)" class="group-commands">
+            <div 
+              v-for="(entry, idx) in entries" 
+              :key="`${entry.command}-${idx}`"
+              class="command-item"
+            >
+              <div class="command-info">
+                <p v-if="entry.description" class="command-desc">
+                  {{ entry.description }}
+                </p>
+                <code class="command-text">{{ entry.command }}</code>
+              </div>
+              <div class="command-actions">
+                <button 
+                  class="action-btn copy-btn"
+                  :title="t('search.copy')"
+                  @click="$emit('copy', entry.command)"
+                >
+                  📋
+                </button>
+                <button 
+                  class="action-btn remove-btn"
+                  :title="t('settings.remove')"
+                  @click="$emit('remove', `shortcut::${pageTitle}`, entry.command)"
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -90,6 +141,34 @@ defineEmits<{
 }>();
 
 const expandedGroups = ref<Set<string>>(new Set());
+
+
+// Group favorites by scope
+const groupedByScope = computed(() => {
+  const groups: Record<string, Record<string, FavoriteEntry[]>> = {
+    command: {},
+    shortcut: {}
+  };
+  
+  for (const [key, entries] of Object.entries(props.favorites.items)) {
+    // Parse scope::title format
+    const parts = key.split('::');
+    if (parts.length === 2) {
+      const [scope, title] = parts;
+      if (scope === 'command' || scope === 'shortcut') {
+        groups[scope][title] = entries;
+      } else {
+        // Fallback: treat as command if scope is unknown
+        groups.command[key] = entries;
+      }
+    } else {
+      // Legacy format without scope, treat as command
+      groups.command[key] = entries;
+    }
+  }
+  
+  return groups;
+});
 
 const hasFavorites = computed(() => {
   return Object.keys(props.favorites.items).length > 0;
@@ -296,3 +375,18 @@ onMounted(() => {
   color: #ffffff;
 }
 </style>
+
+.scope-section {
+  margin-bottom: 24px;
+}
+
+.scope-header {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border-left: 3px solid var(--primary-color);
+}

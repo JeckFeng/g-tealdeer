@@ -32,7 +32,15 @@
     "fetching": "获取页面中...",
     "copiedAll": "已复制所有命令到剪贴板",
     "copyAll": "复制全部",
-    "favoriteAll": "收藏全部"
+    "favoriteAll": "收藏全部",
+    "noResults": "未找到匹配结果",
+    "selectResult": "请选择一个结果进行渲染。",
+    "sourceTldr": "TLDR",
+    "sourceCustom": "自定义",
+    "sourceShortcut": "快捷键",
+    "all": "全部",
+    "commands": "命令",
+    "shortcuts": "快捷键"
   },
   "newPage": {
     "title": "新建页面",
@@ -55,7 +63,10 @@
     "generate": "生成",
     "generating": "保存中...",
     "previewOutput": "预览有效输出",
-    "openCustomDir": "打开自定义目录"
+    "openCustomDir": "打开自定义目录",
+    "pageType": "页面类型",
+    "commandPage": "命令页面",
+    "shortcutPage": "快捷键页面"
   },
   "manage": {
     "title": "管理",
@@ -73,7 +84,15 @@
     "noPages": "未找到自定义页面。",
     "slug": "标识",
     "examples": "示例",
-    "updated": "更新时间"
+    "updated": "更新时间",
+    "filterAll": "全部",
+    "filterCommand": "命令",
+    "filterShortcut": "快捷键",
+    "filterPatch": "补丁",
+    "typeCommand": "命令",
+    "typeShortcut": "快捷键",
+    "typePatch": "补丁",
+    "pageType": "页面类型"
   },
   "settings": {
     "title": "设置",
@@ -105,6 +124,7 @@
     "cacheDir": "缓存目录",
     "pagesDir": "页面目录",
     "customPagesDir": "自定义页面目录",
+    "shortcutPagesDir": "快捷键页面目录",
     "logDir": "日志目录",
     "rustLog": "Rust 日志",
     "webviewLog": "Webview 日志",

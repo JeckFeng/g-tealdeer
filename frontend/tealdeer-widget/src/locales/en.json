@@ -32,7 +32,15 @@
     "fetching": "Fetching page...",
     "copiedAll": "All commands copied to clipboard",
     "copyAll": "Copy All",
-    "favoriteAll": "Favorite All"
+    "favoriteAll": "Favorite All",
+    "noResults": "No results found",
+    "selectResult": "Select a result to render.",
+    "sourceTldr": "TLDR",
+    "sourceCustom": "Custom",
+    "sourceShortcut": "Shortcut",
+    "all": "All",
+    "commands": "Commands",
+    "shortcuts": "Shortcut Keys"
   },
   "newPage": {
     "title": "New Page",
@@ -55,7 +63,10 @@
     "generate": "Generate",
     "generating": "Saving...",
     "previewOutput": "Preview Effective Output",
-    "openCustomDir": "Open Custom Dir"
+    "openCustomDir": "Open Custom Dir",
+    "pageType": "Page Type",
+    "commandPage": "Command Page",
+    "shortcutPage": "Shortcut Keys Page"
   },
   "manage": {
     "title": "Manage",
@@ -73,7 +84,15 @@
     "noPages": "No custom pages found.",
     "slug": "Slug",
     "examples": "Examples",
-    "updated": "Updated"
+    "updated": "Updated",
+    "filterAll": "All",
+    "filterCommand": "Command",
+    "filterShortcut": "Shortcut",
+    "filterPatch": "Patch",
+    "typeCommand": "Command",
+    "typeShortcut": "Shortcut",
+    "typePatch": "Patch",
+    "pageType": "Page Type"
   },
   "settings": {
     "title": "Settings",
@@ -105,6 +124,7 @@
     "cacheDir": "Cache dir",
     "pagesDir": "Pages dir",
     "customPagesDir": "Custom pages dir",
+    "shortcutPagesDir": "Shortcut pages dir",
     "logDir": "Log dir",
     "rustLog": "Rust log",
     "webviewLog": "Webview log",

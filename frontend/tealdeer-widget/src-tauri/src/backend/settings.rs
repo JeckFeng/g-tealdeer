@@ -150,11 +150,14 @@ fn ensure_app_directories<R: Runtime>(
     let config_dir = app_data_dir(app)?;
     let cache_dir = config_dir.join("cache");
     let pages_dir = config_dir.join("pages");
+    let shortcut_pages_dir = config_dir.join("shortcut_pages");
 
     fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create cache dir: {e}"))?;
     fs::create_dir_all(&pages_dir)
         .map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
+    fs::create_dir_all(&shortcut_pages_dir)
+        .map_err(|e| format!("Failed to create shortcut pages dir: {e}"))?;
 
     set_string(
         value,
@@ -166,10 +169,16 @@ fn ensure_app_directories<R: Runtime>(
         &["directories", "custom_pages_dir"],
         pages_dir.to_string_lossy().to_string(),
     );
+    set_string(
+        value,
+        &["directories", "shortcut_pages_dir"],
+        shortcut_pages_dir.to_string_lossy().to_string(),
+    );
     debug!(
-        "Ensured app directories: cache={}, pages={}",
+        "Ensured app directories: cache={}, pages={}, shortcut_pages={}",
         cache_dir.display(),
-        pages_dir.display()
+        pages_dir.display(),
+        shortcut_pages_dir.display()
     );
     Ok(())
 }

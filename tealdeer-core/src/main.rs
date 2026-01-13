@@ -7,7 +7,7 @@ use std::{
 
 use clap::Parser;
 
-use tealdeer::{api::RunArgs, run, Cli};
+use tealdeer::{api::RunArgs, run, types::PageScope, Cli};
 
 #[cfg(feature = "logging")]
 fn init_log() {
@@ -27,6 +27,7 @@ fn main() -> ExitCode {
 
     let run_args = RunArgs {
         command: args.command,
+        scope: if args.shortcut { PageScope::Shortcut } else { PageScope::Command },
         list: args.list,
         edit_page: args.edit_page,
         edit_patch: args.edit_patch,

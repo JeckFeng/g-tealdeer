@@ -32,6 +32,10 @@ pub struct Cli {
     #[arg(short = 'l', long = "list")]
     pub list: bool,
 
+    /// Search for shortcut keys instead of commands
+    #[arg(short = 's', long = "shortcut")]
+    pub shortcut: bool,
+
     /// Edit custom page with `EDITOR`
     #[arg(long, requires = "command")]
     pub edit_page: bool,
