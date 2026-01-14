@@ -66,7 +66,13 @@
     "openCustomDir": "打开自定义目录",
     "pageType": "页面类型",
     "commandPage": "命令页面",
-    "shortcutPage": "快捷键页面"
+    "shortcutPage": "快捷键页面",
+    "application": "应用",
+    "applicationPlaceholder": "Application",
+    "shortcutKey": "快捷键",
+    "shortcutKeyPlaceholder": "Shortcut Key",
+    "summaryPlaceholderShortcut": "One line Summary",
+    "descriptionPlaceholderShortcut": "Description"
   },
   "manage": {
     "title": "管理",

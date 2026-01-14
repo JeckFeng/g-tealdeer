@@ -175,7 +175,7 @@ const examples = ref<ExampleInput[]>([{ desc: "", cmd: "" }]);
 const isCreating = ref(false);
 
 const manageEntries = ref<CustomEntry[]>([]);
-const manageFilterType = ref<"all" | "command" | "shortcut" | "patch">("all");
+const manageFilterType = ref<"all" | "command" | "shortcut">("all");
 const manageLoading = ref(false);
 const manageType = ref<"all" | "page" | "patch">("all");
 const manageStatus = ref<"all" | "enabled" | "disabled">("all");
@@ -239,10 +239,8 @@ const platformOptions = [
 const filteredEntries = computed(() => {
   const query = manageQuery.value.trim().toLowerCase();
   return manageEntries.value.filter((entry) => {
-    // Filter by page type (command/shortcut/patch)
-    if (manageFilterType.value === "patch") {
-      if (entry.kind !== "patch") return false;
-    } else if (manageFilterType.value !== "all") {
+    // Filter by page type (command/shortcut)
+    if (manageFilterType.value !== "all") {
       if (entry.pageType !== manageFilterType.value) return false;
     }
     
@@ -1339,6 +1337,16 @@ watch(
   },
 );
 
+// Watch newPageType to reset newMode when switching to shortcut
+watch(
+  () => newPageType.value,
+  (newType) => {
+    if (newType === 'shortcut' && newMode.value === 'patch') {
+      newMode.value = 'page';
+    }
+  },
+);
+
 onMounted(() => {
   loadAppSettings();
   resolveLogPaths();
@@ -1509,27 +1517,18 @@ onBeforeUnmount(() => {
       </div>
       
       <div class="page-type-selector">
-        <button
-          type="button"
-          :class="['type-btn', { active: pageScope === 'all' }]"
-          @click="pageScope = 'all'"
-        >
-          {{ t('search.all') }}
-        </button>
-        <button
-          type="button"
-          :class="['type-btn', { active: pageScope === 'command' }]"
-          @click="pageScope = 'command'"
-        >
-          {{ t('search.commands') }}
-        </button>
-        <button
-          type="button"
-          :class="['type-btn', { active: pageScope === 'shortcut' }]"
-          @click="pageScope = 'shortcut'"
-        >
-          {{ t('search.shortcuts') }}
-        </button>
+        <label class="type-radio">
+          <input v-model="pageScope" type="radio" value="all" />
+          <span>{{ t('search.all') }}</span>
+        </label>
+        <label class="type-radio">
+          <input v-model="pageScope" type="radio" value="command" />
+          <span>{{ t('search.commands') }}</span>
+        </label>
+        <label class="type-radio">
+          <input v-model="pageScope" type="radio" value="shortcut" />
+          <span>{{ t('search.shortcuts') }}</span>
+        </label>
       </div>
       
       <form class="search-form" @submit.prevent="runSearch">
@@ -1684,7 +1683,7 @@ onBeforeUnmount(() => {
           <input v-model="newMode" type="radio" value="page" />
           <span>{{ t('newPage.customPage') }}</span>
         </label>
-        <label class="mode">
+        <label v-if="newPageType === 'command'" class="mode">
           <input v-model="newMode" type="radio" value="patch" />
           <span>{{ t('newPage.patch') }}</span>
           <span
@@ -1724,11 +1723,11 @@ onBeforeUnmount(() => {
 
       <div class="search-form">
         <label class="field">
-          <span>{{ t('newPage.command') }}</span>
+          <span>{{ newPageType === 'shortcut' ? t('newPage.application') : t('newPage.command') }}</span>
           <input
             v-model="newCommand"
             type="text"
-            :placeholder="newCommandPlaceholder"
+            :placeholder="newPageType === 'shortcut' ? t('newPage.applicationPlaceholder') : newCommandPlaceholder"
             :class="{ error: newCommandPlaceholderTemp }"
             autocomplete="off"
             
@@ -1740,13 +1739,13 @@ onBeforeUnmount(() => {
           <input
             v-model="summary"
             type="text"
-            :placeholder="t('newPage.summaryPlaceholder')"
+            :placeholder="newPageType === 'shortcut' ? t('newPage.summaryPlaceholderShortcut') : t('newPage.summaryPlaceholder')"
             autocomplete="off"
             
           />
         </label>
 
-        <label v-if="newMode === 'patch'" class="toggle-field">
+        <label v-if="newMode === 'patch' && newPageType === 'command'" class="toggle-field">
           <input v-model="includePatchHeader" type="checkbox" />
           <span>{{ t('newPage.includePatchHeader') }}</span>
         </label>
@@ -1773,13 +1772,13 @@ onBeforeUnmount(() => {
             <input
               v-model="example.desc"
               type="text"
-              :placeholder="t('newPage.descriptionPlaceholder')"
+              :placeholder="newPageType === 'shortcut' ? t('newPage.descriptionPlaceholderShortcut') : t('newPage.descriptionPlaceholder')"
               
             />
             <input
               v-model="example.cmd"
               type="text"
-              :placeholder="t('newPage.commandPlaceholder')"
+              :placeholder="newPageType === 'shortcut' ? t('newPage.shortcutKeyPlaceholder') : t('newPage.commandPlaceholder')"
               
             />
             <button
@@ -1832,7 +1831,6 @@ onBeforeUnmount(() => {
             <option value="all">{{ t('manage.filterAll') }}</option>
             <option value="command">{{ t('manage.filterCommand') }}</option>
             <option value="shortcut">{{ t('manage.filterShortcut') }}</option>
-            <option value="patch">{{ t('manage.filterPatch') }}</option>
           </select>
         </label>
         <label class="field">
