@@ -1,6 +1,7 @@
 mod backend;
 
 use log::LevelFilter;
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_log::{Target, TargetKind, WEBVIEW_TARGET};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +37,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .manage(backend::immersive_window::ImmersiveWindowManager::new())
         .invoke_handler(tauri::generate_handler![
             backend::tealdeer::get_show_paths,
             backend::tealdeer::render_tldr,
@@ -74,13 +76,28 @@ pub fn run() {
             backend::favorites::add_favorite,
             backend::favorites::remove_favorite,
             backend::favorites::clear_favorites,
-            backend::favorites::is_favorite
+            backend::favorites::is_favorite,
+            backend::immersive_window::open_immersive_window,
+            backend::immersive_window::close_immersive_window,
+            backend::immersive_window::get_immersive_window_state,
+            backend::immersive_window::set_immersive_window_state
         ])
         .setup(|app| {
             if let Err(err) = backend::tray_hotkey::setup(app.handle()) {
                 eprintln!("Tray/hotkey setup failed: {err}");
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "immersive" {
+                if let WindowEvent::CloseRequested { .. } = event {
+                    let app = window.app_handle();
+                    if let Some(immersive_window) = app.get_webview_window("immersive") {
+                        let manager = app.state::<backend::immersive_window::ImmersiveWindowManager>();
+                        let _ = manager.handle_window_close(&app, &immersive_window);
+                    }
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

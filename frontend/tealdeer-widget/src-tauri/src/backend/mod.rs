@@ -6,3 +6,4 @@ pub mod open_paths;
 pub mod favorites;
 pub mod page_manager;
 pub mod shortcut_pages;
+pub mod immersive_window;

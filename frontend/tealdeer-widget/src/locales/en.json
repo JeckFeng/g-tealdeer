@@ -34,6 +34,7 @@
     "copyAll": "Copy All",
     "favoriteAll": "Favorite All",
     "noResults": "No results found",
+    "tryDifferentKeywords": "Try different keywords",
     "selectResult": "Select a result to render.",
     "sourceTldr": "TLDR",
     "sourceCustom": "Custom",
@@ -141,6 +142,7 @@
     "loadingSettings": "Loading settings...",
     "myFavorites": "My Favorites",
     "noFavorites": "No favorite commands yet",
+    "noFavoritesHint": "Add favorites in the main window to see them here.",
     "favoriteAdded": "Added to favorites",
     "favoriteRemoved": "Removed from favorites",
     "favoriteExists": "Already in favorites",
@@ -169,7 +171,15 @@
     "german": "German",
     "french": "French",
     "na": "N/A",
-    "offlineMode": "Offline mode, cannot update cache"
+    "offlineMode": "Offline mode, cannot update cache",
+    "loading": "Loading...",
+    "loadFailed": "Failed to load",
+    "copyFailed": "Copy failed",
+    "copied": "Copied to clipboard",
+    "backToMain": "Back to main window",
+    "previous": "Previous",
+    "next": "Next",
+    "catalog": "Catalog"
   },
   "validation": {
     "commandRequired": "Command is required.",

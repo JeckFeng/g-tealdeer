@@ -18,6 +18,12 @@ pub struct AppSettings {
     pub hotkey_toggle: String,
     pub always_on_top: bool,
     pub theme: String,
+    // Immersive window settings
+    pub immersive_on_open_action: String,
+    pub immersive_always_on_top: bool,
+    pub immersive_opacity: f64,
+    pub immersive_default_mode: String,
+    pub immersive_sidebar_default: bool,
 }
 
 impl Default for AppSettings {
@@ -27,6 +33,12 @@ impl Default for AppSettings {
             hotkey_toggle: "Ctrl+Alt+T".to_string(),
             always_on_top: true,
             theme: "light".to_string(),
+            // Immersive window defaults
+            immersive_on_open_action: "hide_to_tray".to_string(),
+            immersive_always_on_top: true,
+            immersive_opacity: 1.0,
+            immersive_default_mode: "all".to_string(),
+            immersive_sidebar_default: true,
         }
     }
 }

@@ -69,6 +69,11 @@ type AppSettings = {
   hotkey_toggle: string;
   always_on_top: boolean;
   theme: ThemeMode;
+  immersive_on_open_action: string;
+  immersive_always_on_top: boolean;
+  immersive_opacity: number;
+  immersive_default_mode: string;
+  immersive_sidebar_default: boolean;
 };
 
 type TealdeerConfigValues = {
@@ -191,6 +196,11 @@ const settingsArchiveSource = ref("");
 const settingsColor = ref("auto");
 const settingsHotkey = ref("Ctrl+Alt+T");
 const settingsAlwaysOnTop = ref(true);
+const settingsImmersiveOnOpen = ref("hide_to_tray");
+const settingsImmersiveAlwaysOnTop = ref(true);
+const settingsImmersiveOpacity = ref(1.0);
+const settingsImmersiveDefaultMode = ref("all");
+const settingsImmersiveSidebarDefault = ref(true);
 const theme = ref<ThemeMode>("light");
 const showPaths = ref<ShowPaths | null>(null);
 const logDir = ref<string | null>(null);
@@ -416,6 +426,11 @@ function buildAppSettingsPayload(nextTheme?: ThemeMode): AppSettings {
     hotkey_toggle: settingsHotkey.value.trim(),
     always_on_top: settingsAlwaysOnTop.value,
     theme: nextTheme ?? theme.value,
+    immersive_on_open_action: settingsImmersiveOnOpen.value,
+    immersive_always_on_top: settingsImmersiveAlwaysOnTop.value,
+    immersive_opacity: settingsImmersiveOpacity.value,
+    immersive_default_mode: settingsImmersiveDefaultMode.value,
+    immersive_sidebar_default: settingsImmersiveSidebarDefault.value,
   };
 }
 
@@ -430,6 +445,15 @@ async function toggleTheme() {
   } catch (err) {
     applyTheme(previous);
     logUiError(`Failed to save theme: ${normalizeError(err)}`);
+  }
+}
+
+async function openImmersiveWindow() {
+  try {
+    await invoke('open_immersive_window');
+    logUiInfo('Immersive window opened');
+  } catch (err) {
+    console.error('Failed to open immersive window:', err);
   }
 }
 
@@ -560,6 +584,11 @@ async function loadSettings() {
     settingsHotkey.value = appSettings.hotkey_toggle;
     settingsAlwaysOnTop.value = appSettings.always_on_top;
     applyTheme(normalizeTheme(appSettings.theme));
+    settingsImmersiveOnOpen.value = appSettings.immersive_on_open_action;
+    settingsImmersiveAlwaysOnTop.value = appSettings.immersive_always_on_top;
+    settingsImmersiveOpacity.value = appSettings.immersive_opacity;
+    settingsImmersiveDefaultMode.value = appSettings.immersive_default_mode;
+    settingsImmersiveSidebarDefault.value = appSettings.immersive_sidebar_default;
 
     settingsLanguages.value = configValues.languages.join(", ");
     settingsPlatforms.value =
@@ -586,6 +615,11 @@ async function loadAppSettings() {
     settingsHotkey.value = appSettings.hotkey_toggle;
     settingsAlwaysOnTop.value = appSettings.always_on_top;
     applyTheme(normalizeTheme(appSettings.theme));
+    settingsImmersiveOnOpen.value = appSettings.immersive_on_open_action;
+    settingsImmersiveAlwaysOnTop.value = appSettings.immersive_always_on_top;
+    settingsImmersiveOpacity.value = appSettings.immersive_opacity;
+    settingsImmersiveDefaultMode.value = appSettings.immersive_default_mode;
+    settingsImmersiveSidebarDefault.value = appSettings.immersive_sidebar_default;
   } catch (err) {
     showErrorToast(normalizeError(err));
     logUiError(`Failed to load app settings: ${normalizeError(err)}`);
@@ -1467,6 +1501,15 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="hero-actions">
+        <button
+          class="immersive-toggle"
+          type="button"
+          title="打开沉浸式阅读"
+          aria-label="打开沉浸式阅读"
+          @click="openImmersiveWindow"
+        >
+          <span class="immersive-icon">📖</span>
+        </button>
         <button
           class="theme-toggle"
           type="button"
@@ -2419,6 +2462,35 @@ select {
 
 .theme-toggle:hover .theme-icon {
   transform: rotate(15deg);
+}
+
+.immersive-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--button-ghost-border);
+  background: var(--button-ghost-bg);
+  color: var(--button-ghost-text);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.immersive-toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.immersive-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.immersive-toggle:hover .immersive-icon {
+  transform: scale(1.1);
 }
 
 .brand-logo {

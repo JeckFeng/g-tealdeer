@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FavoriteEntry {
@@ -184,6 +184,7 @@ pub fn add_favorite(
         favorites.updated_at = current_timestamp();
 
         write_favorites(&path, &favorites)?;
+        let _ = app.emit("favorites-updated", ());
     }
     
     Ok(favorites)
@@ -211,6 +212,7 @@ pub fn remove_favorite(
         favorites.updated_at = current_timestamp();
 
         write_favorites(&path, &favorites)?;
+        let _ = app.emit("favorites-updated", ());
     }
     
     Ok(favorites)
@@ -222,6 +224,7 @@ pub fn clear_favorites(app: AppHandle) -> Result<Favorites, String> {
     let favorites = Favorites::default();
 
     write_favorites(&path, &favorites)?;
+    let _ = app.emit("favorites-updated", ());
     
     Ok(favorites)
 }
