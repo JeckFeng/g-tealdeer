@@ -387,7 +387,7 @@ onUnmounted(() => {
 <template>
   <div class="immersive-view" :style="{ opacity: immersiveOpacity }">
     <!-- Search Bar -->
-    <div class="search-bar">
+    <div class="search-bar" :class="{ 'sidebar-visible': sidebarVisible }">
       <!-- Exit Button -->
       <button class="exit-btn" @click="closeWindow">
         ← {{ t('common.backToMain') || '返回主窗口' }}
@@ -540,6 +540,8 @@ onUnmounted(() => {
   flex-direction: column;
   background: #ffffff;
   overflow: hidden;
+  --sidebar-width: 200px;
+  --sidebar-gap: 8px;
 }
 
 /* Search Bar */
@@ -552,6 +554,10 @@ onUnmounted(() => {
   background: #fafbfc;
   position: relative;
   z-index: 200;
+}
+
+.search-bar.sidebar-visible {
+  margin-left: calc(var(--sidebar-width) + var(--sidebar-gap));
 }
 
 .exit-btn {
@@ -654,7 +660,7 @@ onUnmounted(() => {
 }
 
 .content-area.sidebar-visible {
-  margin-left: 200px;
+  margin-left: calc(var(--sidebar-width) + var(--sidebar-gap));
 }
 
 /* Loading State */
