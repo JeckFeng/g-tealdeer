@@ -59,6 +59,9 @@ const contentRef = ref<HTMLElement | null>(null);
 const commandsExpanded = ref(true);
 const shortcutsExpanded = ref(true);
 const immersiveOpacity = ref(1);
+const searchAutoVisible = ref(false);
+const searchFocused = ref(false);
+let topEdgeThrottle: number | null = null;
 const searchPlaceholder = computed(() => {
   const value = t('search.searchPlaceholder');
   if (value && value !== 'search.searchPlaceholder') {
@@ -69,6 +72,10 @@ const searchPlaceholder = computed(() => {
     return fallback;
   }
   return 'Search...';
+});
+
+const isSearchVisible = computed(() => {
+  return searchAutoVisible.value || searchFocused.value || !!searchQuery.value.trim();
 });
 
 // Favorites data
@@ -90,6 +97,10 @@ watch(searchQuery, (newVal) => {
     debouncedSearchQuery.value = newVal;
     currentPage.value = 1; // Reset to first page on search
   }, 200);
+
+  if (newVal.trim()) {
+    searchAutoVisible.value = true;
+  }
 });
 
 // Track scroll position for sidebar highlighting
@@ -101,6 +112,22 @@ function handleScroll() {
     scrollThrottle = null;
     updateActiveCard();
   }, 150);
+}
+
+function handleTopEdgeMove(e: MouseEvent) {
+  if (topEdgeThrottle) return;
+
+  topEdgeThrottle = window.setTimeout(() => {
+    topEdgeThrottle = null;
+    if (e.clientY <= 8) {
+      searchAutoVisible.value = true;
+      return;
+    }
+
+    if (e.clientY > 80 && !searchFocused.value && !searchQuery.value.trim()) {
+      searchAutoVisible.value = false;
+    }
+  }, 80);
 }
 
 // Update active card based on scroll position
@@ -364,6 +391,7 @@ onMounted(async () => {
   
   // Add scroll listener
   contentRef.value?.addEventListener('scroll', handleScroll);
+  window.addEventListener('mousemove', handleTopEdgeMove);
   
   // Initial active card update
   setTimeout(updateActiveCard, 100);
@@ -375,11 +403,15 @@ onUnmounted(() => {
     unlistenFavorites = null;
   }
   contentRef.value?.removeEventListener('scroll', handleScroll);
+  window.removeEventListener('mousemove', handleTopEdgeMove);
   if (scrollThrottle) {
     clearTimeout(scrollThrottle);
   }
   if (debounceTimer) {
     clearTimeout(debounceTimer);
+  }
+  if (topEdgeThrottle) {
+    clearTimeout(topEdgeThrottle);
   }
 });
 </script>
@@ -387,7 +419,7 @@ onUnmounted(() => {
 <template>
   <div class="immersive-view" :style="{ opacity: immersiveOpacity }">
     <!-- Search Bar -->
-    <div class="search-bar" :class="{ 'sidebar-visible': sidebarVisible }">
+    <div class="search-bar" :class="{ visible: isSearchVisible, 'sidebar-visible': sidebarVisible }">
       <!-- Exit Button -->
       <button class="exit-btn" @click="closeWindow">
         ← {{ t('common.backToMain') || '返回主窗口' }}
@@ -427,6 +459,8 @@ onUnmounted(() => {
         type="text"
         class="search-input"
         :placeholder="searchPlaceholder"
+        @focus="searchFocused = true"
+        @blur="searchFocused = false"
       />
     </div>
     
@@ -438,7 +472,7 @@ onUnmounted(() => {
     />
     
     <!-- Content Area -->
-    <div ref="contentRef" class="content-area" :class="{ 'sidebar-visible': sidebarVisible }">
+    <div ref="contentRef" class="content-area" :class="{ 'sidebar-visible': sidebarVisible, 'search-visible': isSearchVisible }">
       <!-- Loading State -->
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
@@ -542,6 +576,7 @@ onUnmounted(() => {
   overflow: hidden;
   --sidebar-width: 200px;
   --sidebar-gap: 8px;
+  --search-bar-height: 64px;
 }
 
 /* Search Bar */
@@ -552,12 +587,25 @@ onUnmounted(() => {
   padding: 16px 20px;
   border-bottom: 1px solid #e1e4e8;
   background: #fafbfc;
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 200;
+  transform: translateY(calc(-1 * var(--search-bar-height)));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  pointer-events: none;
+}
+
+.search-bar.visible {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  pointer-events: auto;
 }
 
 .search-bar.sidebar-visible {
-  margin-left: calc(var(--sidebar-width) + var(--sidebar-gap));
+  left: calc(var(--sidebar-width) + var(--sidebar-gap));
+  right: 0;
 }
 
 .exit-btn {
@@ -661,6 +709,10 @@ onUnmounted(() => {
 
 .content-area.sidebar-visible {
   margin-left: calc(var(--sidebar-width) + var(--sidebar-gap));
+}
+
+.content-area.search-visible {
+  padding-top: calc(20px + var(--search-bar-height));
 }
 
 /* Loading State */
