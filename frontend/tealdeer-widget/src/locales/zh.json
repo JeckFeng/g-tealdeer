@@ -68,6 +68,7 @@
     "pageType": "页面类型",
     "commandPage": "命令页面",
     "shortcutPage": "快捷键页面",
+    "duplicateWarning": "警告：检测到 {count} 个重复项",
     "application": "应用",
     "applicationPlaceholder": "Application",
     "shortcutKey": "快捷键",

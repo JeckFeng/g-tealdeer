@@ -68,6 +68,7 @@
     "pageType": "Page Type",
     "commandPage": "Command Page",
     "shortcutPage": "Shortcut Keys Page",
+    "duplicateWarning": "Warning: {count} duplicate(s) detected",
     "application": "Application",
     "applicationPlaceholder": "Application",
     "shortcutKey": "Shortcut Key",

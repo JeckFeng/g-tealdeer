@@ -932,8 +932,21 @@ async function createCustom() {
       const result = await invoke<CustomFileInfo>(commandName, {
         req,
       });
-      setSuccessMessage(`Saved patch to ${result.path}`);
-      logUiInfo(`Created custom patch: ${command}`);
+      
+      // Check for duplicate warning in result
+      if (result.path.includes('|DUPCOUNT:')) {
+        const [actualPath, countStr] = result.path.split('|DUPCOUNT:');
+        const count = parseInt(countStr, 10);
+        setSuccessMessage(`Appended patch to ${actualPath}`);
+        // Show warning toast after a short delay
+        setTimeout(() => {
+          showErrorToast(t('newPage.duplicateWarning', { count }));
+        }, 500);
+        logUiInfo(`Appended custom patch with warning: ${command}`);
+      } else {
+        setSuccessMessage(`Saved patch to ${result.path}`);
+        logUiInfo(`Created custom patch: ${command}`);
+      }
     } else {
       const first = cleanExamples()[0];
       const commandName = newPageType.value === "shortcut"

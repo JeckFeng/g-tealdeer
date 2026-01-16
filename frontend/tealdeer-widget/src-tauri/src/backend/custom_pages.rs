@@ -106,11 +106,43 @@ pub fn create_or_overwrite_patch(
         .map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
 
     let path = dir.join(format!("{slug}.patch.md"));
-    let contents = format_patch(&req.command, &req.examples, req.include_header_in_patch)?;
-    write_file(&path, &contents)?;
-    info!("Created custom patch: {}", path.display());
+    
+    // Check if patch exists and detect duplicates
+    let mut warning = None;
+    if path.exists() {
+        if let Ok(existing_content) = fs::read_to_string(&path) {
+            let duplicates = check_duplicate_examples(&existing_content, &req.examples);
+            if !duplicates.is_empty() {
+                warning = Some(duplicates.len());
+            }
+        }
+    }
+    
+    let new_content = format_patch(&req.command, &req.examples, req.include_header_in_patch)?;
+    
+    // Append mode: read existing content and append new examples
+    let final_content = if path.exists() {
+        if let Ok(mut existing) = fs::read_to_string(&path) {
+            existing = existing.trim_end().to_string();
+            existing.push_str("\n\n");
+            existing.push_str(&new_content);
+            existing
+        } else {
+            new_content
+        }
+    } else {
+        new_content
+    };
+    
+    write_file(&path, &final_content)?;
+    info!("Appended to custom patch: {}", path.display());
 
-    Ok(build_info(&path, slug))
+    let mut result = build_info(&path, slug);
+    if let Some(count) = warning {
+        result.path = format!("{}|DUPCOUNT:{}", result.path, count);
+    }
+    
+    Ok(result)
 }
 
 #[tauri::command]
@@ -407,6 +439,38 @@ fn format_example_block(example: &ExampleInput) -> Result<String, String> {
         return Err("Example description and command are required.".to_string());
     }
     Ok(format!("- {desc}:\n\n`{cmd}`\n"))
+}
+
+fn check_duplicate_examples(existing_content: &str, new_examples: &[ExampleInput]) -> Vec<String> {
+    let mut duplicates = Vec::new();
+    
+    for new_ex in new_examples {
+        let new_desc = new_ex.desc.trim();
+        let new_cmd = new_ex.cmd.trim();
+        
+        // Check for duplicate description or command
+        for line in existing_content.lines() {
+            let trimmed = line.trim();
+            
+            // Check description (lines starting with "- ")
+            if trimmed.starts_with("- ") {
+                let desc_part = trimmed.trim_start_matches("- ").trim_end_matches(':');
+                if desc_part == new_desc {
+                    duplicates.push(format!("desc: {}", new_desc));
+                }
+            }
+            
+            // Check command (lines with backticks)
+            if trimmed.starts_with('`') && trimmed.ends_with('`') {
+                let cmd_part = trimmed.trim_matches('`');
+                if cmd_part == new_cmd {
+                    duplicates.push(format!("cmd: {}", new_cmd));
+                }
+            }
+        }
+    }
+    
+    duplicates
 }
 
 fn write_file(path: &Path, contents: &str) -> Result<(), String> {
