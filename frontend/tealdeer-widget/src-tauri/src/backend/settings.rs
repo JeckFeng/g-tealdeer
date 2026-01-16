@@ -6,7 +6,7 @@ use std::{
 
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use toml::Value;
 
 use crate::backend::tray_hotkey;
@@ -72,7 +72,11 @@ pub fn get_app_settings<R: tauri::Runtime>(app: AppHandle<R>) -> Result<AppSetti
 pub fn set_app_settings<R: tauri::Runtime>(app: AppHandle<R>, settings: AppSettings) -> Result<(), String> {
     let current = read_app_settings(&app)?;
     tray_hotkey::apply_app_settings(&app, &current, &settings)?;
-    write_app_settings(&app, &settings)
+    let result = write_app_settings(&app, &settings);
+    if result.is_ok() {
+        let _ = app.emit("app-settings-updated", settings);
+    }
+    result
 }
 
 #[tauri::command]

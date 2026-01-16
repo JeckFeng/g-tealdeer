@@ -62,14 +62,17 @@ sudo pacman -S webkit2gtk-4.1 libayatana-appindicator gtk3
 ### 编译 CLI
 
 ```bash
-# 调试版本
-cargo build
+# 发布版本（默认）
+cargo build --release -p tldr
 
-# 发布版本
-cargo build --release
+# 体积优化（Linux/macOS）
+strip target/release/tldr
 
 # 二进制文件位置
 ./target/release/tldr
+
+# 开发者选项（debug）
+# cargo build -p tldr
 ```
 
 ### 编译桌面应用

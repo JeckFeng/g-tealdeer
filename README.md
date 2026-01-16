@@ -65,8 +65,11 @@ sudo pacman -S webkit2gtk-4.1 libayatana-appindicator gtk3
 ### Build CLI
 
 ```bash
-# Release build
-cargo build --release
+# Release build (default)
+cargo build --release -p tldr
+
+# Size optimization (Linux/macOS)
+strip target/release/tldr
 
 # Binary: ./target/release/tldr
 ```

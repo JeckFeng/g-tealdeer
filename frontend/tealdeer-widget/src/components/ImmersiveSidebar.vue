@@ -164,13 +164,13 @@ watch(autoVisible, (value) => {
   top: 0;
   width: 200px;
   height: 100vh;
-  background: #fafbfc;
-  border-right: 1px solid #e1e4e8;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
   transition: left 0.2s ease;
   z-index: 100;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--panel-shadow);
 }
 
 .immersive-sidebar.visible {
@@ -179,14 +179,14 @@ watch(autoVisible, (value) => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #e1e4e8;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .sidebar-header h4 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #24292e;
+  color: var(--text-primary);
 }
 
 .sidebar-content {
@@ -203,7 +203,7 @@ watch(autoVisible, (value) => {
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 600;
-  color: #24292e;
+  color: var(--text-primary);
   cursor: pointer;
   user-select: none;
   display: flex;
@@ -213,21 +213,21 @@ watch(autoVisible, (value) => {
 }
 
 .group-header:hover {
-  background: #f6f8fa;
+  background: var(--bg-alt);
 }
 
 .expand-icon {
   font-size: 10px;
-  color: #586069;
+  color: var(--text-muted);
   transition: transform 0.2s ease;
 }
 
 .group-header.commands {
-  color: #4f87ff;
+  color: var(--command-accent);
 }
 
 .group-header.shortcuts {
-  color: #f7a34b;
+  color: var(--shortcut-accent);
 }
 
 .group-items {
@@ -238,7 +238,7 @@ watch(autoVisible, (value) => {
 .group-item {
   padding: 8px 16px 8px 32px;
   font-size: 14px;
-  color: #586069;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -253,30 +253,30 @@ watch(autoVisible, (value) => {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #d1d5da;
+  background: var(--panel-border);
   transition: all 0.2s ease;
 }
 
 .group-item:hover {
-  background: #f6f8fa;
-  color: #24292e;
+  background: var(--bg-alt);
+  color: var(--text-primary);
 }
 
 .group-item:hover::before {
   width: 6px;
   height: 6px;
-  background: #586069;
+  background: var(--text-muted);
 }
 
 .group-item.active {
-  background: #e8f4fd;
-  color: #0366d6;
+  background: var(--tabs-bg);
+  color: var(--accent);
   font-weight: 500;
 }
 
 .group-item.active::before {
   width: 6px;
   height: 6px;
-  background: #0366d6;
+  background: var(--accent);
 }
 </style>

@@ -144,6 +144,7 @@ const viewMode = ref<"rendered" | "raw">("rendered");
 const lastCommand = ref("");
 const updateProgress = ref("");
 const lastRenderScope = ref<"command" | "shortcut">("command");
+let themeTransitionTimer: number | null = null;
 
 const searchResults = ref<SearchEntry[]>([]);
 const searchResultsQuery = ref("");
@@ -417,7 +418,16 @@ function normalizeTheme(value: string | null | undefined): ThemeMode {
 
 function applyTheme(next: ThemeMode) {
   theme.value = next;
-  document.documentElement.dataset.theme = next;
+  const root = document.documentElement;
+  root.classList.add("theme-transition");
+  if (themeTransitionTimer) {
+    clearTimeout(themeTransitionTimer);
+  }
+  themeTransitionTimer = window.setTimeout(() => {
+    root.classList.remove("theme-transition");
+    themeTransitionTimer = null;
+  }, 320);
+  root.dataset.theme = next;
 }
 
 function buildAppSettingsPayload(nextTheme?: ThemeMode): AppSettings {
@@ -1480,6 +1490,10 @@ onBeforeUnmount(() => {
     handleOffline = null;
   }
   }
+  if (themeTransitionTimer) {
+    clearTimeout(themeTransitionTimer);
+    themeTransitionTimer = null;
+  }
 });
 </script>
 
@@ -2213,142 +2227,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;600&display=swap");
-
-:root {
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  color: var(--text-primary);
-  background-color: var(--bg);
-  line-height: 1.5;
-  font-weight: 400;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  color-scheme: light;
-  
-  /* 主题切换过渡 */
-  transition: background-color 0.3s ease, color 0.3s ease;
-  
-  --bg: #cbb9ff;
-  --bg-alt: #f2ecff;
-  --glow-1: rgba(120, 85, 255, 0.25);
-  --glow-2: rgba(204, 176, 255, 0.25);
-  --text-primary: #0f1f1c;
-  --text-muted: #5b6662;
-  --text-muted-strong: #54605b;
-  --text-on-strong: #f8f6f1;
-  --text-on-accent: #ffffff;
-  --panel-bg: #ffffff;
-  --panel-border: rgba(15, 31, 28, 0.08);
-  --panel-shadow: 0 20px 50px rgba(15, 31, 28, 0.08);
-  --input-bg: #f7f2ff;
-  --input-border: rgba(15, 31, 28, 0.12);
-  --chip-bg: #f7f2ff;
-  --chip-border: rgba(15, 31, 28, 0.12);
-  --accent: #2a9d8f;
-  --accent-strong: #0f1f1c;
-  --accent-outline: rgba(42, 157, 143, 0.4);
-  --accent-outline-strong: rgba(42, 157, 143, 0.6);
-  --accent-shadow: 0 12px 24px rgba(42, 157, 143, 0.25);
-  --accent-border: rgba(42, 157, 143, 0.5);
-  --tabs-bg: rgba(15, 31, 28, 0.08);
-  --badge-bg: var(--accent-strong);
-  --badge-text: var(--text-on-strong);
-  --button-ghost-border: rgba(15, 31, 28, 0.16);
-  --button-ghost-bg: #ffffff;
-  --button-ghost-text: #2f3c38;
-  --paths-bg: #f6f1ff;
-  --output-bg: #fdfbff;
-  --output-border: rgba(15, 31, 28, 0.08);
-  --output-toggle-bg: #e9e0ff;
-  --code-inline-bg: rgba(15, 31, 28, 0.08);
-  --code-block-bg: #e9e0ff;
-  --code-block-text: #f8f6f1;
-  --alert-bg: rgba(224, 122, 95, 0.15);
-  --alert-text: #8a3c28;
-  --alert-border: rgba(224, 122, 95, 0.5);
-  --success-bg: rgba(42, 157, 143, 0.15);
-  --success-text: #1f6f64;
-  --warning-bg: rgba(255, 193, 7, 0.15);
-  --warning-text: #856404;
-  --hint-text: #b5533a;
-  --tag-bg: rgba(15, 31, 28, 0.08);
-  --tag-enabled-bg: rgba(42, 157, 143, 0.15);
-  --tag-enabled-text: #1f6f64;
-  --tag-disabled-bg: rgba(224, 122, 95, 0.15);
-  --tag-disabled-text: #8a3c28;
-  --tooltip-bg: #0f1f1c;
-  --tooltip-text: #f8f6f1;
-  --tooltip-shadow: 0 12px 24px rgba(15, 31, 28, 0.2);
-  --hint-icon-bg: #ffffff;
-  --hint-icon-border: rgba(15, 31, 28, 0.25);
-  --hint-icon-text: #0f1f1c;
-  --icon-bg: #ffffff;
-  --icon-border: rgba(15, 31, 28, 0.16);
-  --select-option-bg: #ffffff;
-  --select-option-text: #0f1f1c;
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #050608;
-  --bg-alt: #0b1224;
-  --glow-1: rgba(32, 44, 88, 0.35);
-  --glow-2: rgba(12, 20, 46, 0.45);
-  --text-primary: #f4f6f2;
-  --text-muted: #b4c0ba;
-  --text-muted-strong: #c6d2cc;
-  --text-on-strong: #0f1413;
-  --text-on-accent: #0f1413;
-  --panel-bg: #141b2b;
-  --panel-border: rgba(255, 255, 255, 0.1);
-  --panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
-  --input-bg: #1b2234;
-  --input-border: rgba(255, 255, 255, 0.12);
-  --chip-bg: #1b2234;
-  --chip-border: rgba(255, 255, 255, 0.12);
-  --accent: #5cc2b6;
-  --accent-strong: #f4f6f2;
-  --accent-outline: rgba(92, 194, 182, 0.5);
-  --accent-outline-strong: rgba(92, 194, 182, 0.75);
-  --accent-shadow: 0 12px 24px rgba(92, 194, 182, 0.25);
-  --accent-border: rgba(92, 194, 182, 0.5);
-  --tabs-bg: rgba(255, 255, 255, 0.1);
-  --badge-bg: var(--accent-strong);
-  --badge-text: var(--text-on-strong);
-  --button-ghost-border: rgba(255, 255, 255, 0.18);
-  --button-ghost-bg: #141b2b;
-  --button-ghost-text: #e4ece8;
-  --paths-bg: #1b2234;
-  --output-bg: #0f1524;
-  --output-border: rgba(255, 255, 255, 0.08);
-  --output-toggle-bg: #1b2234;
-  --code-inline-bg: rgba(255, 255, 255, 0.12);
-  --code-block-bg: #0b1010;
-  --code-block-text: #e8f0ed;
-  --alert-bg: rgba(224, 122, 95, 0.25);
-  --alert-text: #f7c1b3;
-  --alert-border: rgba(224, 122, 95, 0.6);
-  --success-bg: rgba(92, 194, 182, 0.2);
-  --success-text: #9fe5db;
-  --warning-bg: rgba(255, 193, 7, 0.25);
-  --warning-text: #ffeaa7;
-  --hint-text: #f1a98f;
-  --tag-bg: rgba(255, 255, 255, 0.12);
-  --tag-enabled-bg: rgba(92, 194, 182, 0.2);
-  --tag-enabled-text: #9fe5db;
-  --tag-disabled-bg: rgba(224, 122, 95, 0.25);
-  --tag-disabled-text: #f7c1b3;
-  --tooltip-bg: #101816;
-  --tooltip-text: #f4f6f2;
-  --tooltip-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
-  --hint-icon-bg: #1b2234;
-  --hint-icon-border: rgba(255, 255, 255, 0.24);
-  --hint-icon-text: #f4f6f2;
-  --icon-bg: #141b2b;
-  --icon-border: rgba(255, 255, 255, 0.18);
-  --select-option-bg: #1b2234;
-  --select-option-text: #f4f6f2;
-}
+@import "./styles/theme.css";
 
 * {
   box-sizing: border-box;

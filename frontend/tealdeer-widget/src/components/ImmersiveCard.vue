@@ -18,10 +18,6 @@ const emit = defineEmits<{
   copy: [text: string];
 }>();
 
-const borderColor = computed(() => {
-  return props.scope === 'command' ? '#4f87ff' : '#f7a34b';
-});
-
 function formatCardId(scope: 'command' | 'shortcut', pageTitle: string): string {
   const normalized = pageTitle.trim().replace(/[\s/]+/g, '-');
   return `card-${scope}-${normalized || 'untitled'}`;
@@ -41,7 +37,6 @@ function handleCardClick() {
     :id="cardId"
     class="immersive-card"
     :class="scope"
-    :style="{ borderLeftColor: borderColor }"
     @click="handleCardClick"
   >
     <div class="card-header">
@@ -59,19 +54,19 @@ function handleCardClick() {
 
 <style scoped>
 .immersive-card {
-  background: #fafbfc;
+  background: var(--panel-bg);
   border-left: 4px solid;
   border-radius: 8px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--panel-shadow);
   cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .immersive-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  background: #ffffff;
+  box-shadow: var(--panel-shadow);
+  background: var(--bg-alt);
 }
 
 .immersive-card:active {
@@ -79,11 +74,19 @@ function handleCardClick() {
 }
 
 .immersive-card.command:hover {
-  background: #f0f6ff;
+  background: var(--bg-alt);
 }
 
 .immersive-card.shortcut:hover {
-  background: #fff8f0;
+  background: var(--bg-alt);
+}
+
+.immersive-card.command {
+  border-left-color: var(--command-accent);
+}
+
+.immersive-card.shortcut {
+  border-left-color: var(--shortcut-accent);
 }
 
 .card-header {
@@ -92,14 +95,14 @@ function handleCardClick() {
   justify-content: flex-start;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e7e9eb;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .card-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #2a2a2a;
+  color: var(--text-primary);
 }
 
 .card-content {
@@ -111,19 +114,19 @@ function handleCardClick() {
 .item-description {
   margin: 0;
   font-size: 14px;
-  color: #6b6b6b;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
 .item-command {
   display: block;
   padding: 8px 12px;
-  background: #f6f7f8;
-  border: 1px solid #e7e9eb;
+  background: var(--code-inline-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 6px;
   font-size: 14px;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  color: #2a2a2a;
+  color: var(--text-primary);
   word-break: break-all;
 }
 </style>

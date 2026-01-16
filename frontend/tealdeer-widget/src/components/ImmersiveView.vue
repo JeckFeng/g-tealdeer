@@ -62,6 +62,7 @@ const immersiveOpacity = ref(1);
 const searchAutoVisible = ref(false);
 const searchFocused = ref(false);
 let topEdgeThrottle: number | null = null;
+let themeTransitionTimer: number | null = null;
 const searchPlaceholder = computed(() => {
   const value = t('search.searchPlaceholder');
   if (value && value !== 'search.searchPlaceholder') {
@@ -128,6 +129,19 @@ function handleTopEdgeMove(e: MouseEvent) {
       searchAutoVisible.value = false;
     }
   }, 80);
+}
+
+function applyTheme(mode: string) {
+  const root = document.documentElement;
+  root.classList.add('theme-transition');
+  if (themeTransitionTimer) {
+    clearTimeout(themeTransitionTimer);
+  }
+  themeTransitionTimer = window.setTimeout(() => {
+    root.classList.remove('theme-transition');
+    themeTransitionTimer = null;
+  }, 320);
+  root.dataset.theme = mode === 'dark' ? 'dark' : 'light';
 }
 
 // Update active card based on scroll position
@@ -353,6 +367,7 @@ function prevPage() {
 async function loadSettings() {
   try {
     const settings = await invoke<AppSettings>('get_app_settings');
+    applyTheme(settings.theme);
     
     // Apply default filter mode
     if (settings.immersive_default_mode === 'command') {
@@ -376,6 +391,7 @@ async function loadSettings() {
 
 // Listen for favorites updates
 let unlistenFavorites: (() => void) | null = null;
+let unlistenSettings: (() => void) | null = null;
 
 onMounted(async () => {
   // Load settings first
@@ -387,6 +403,13 @@ onMounted(async () => {
   // Listen for favorites-updated event
   unlistenFavorites = await listen('favorites-updated', async () => {
     await loadFavorites();
+  });
+
+  // Listen for settings updates
+  unlistenSettings = await listen<AppSettings>('app-settings-updated', (event) => {
+    if (event.payload) {
+      applyTheme(event.payload.theme);
+    }
   });
   
   // Add scroll listener
@@ -402,6 +425,10 @@ onUnmounted(() => {
     unlistenFavorites();
     unlistenFavorites = null;
   }
+  if (unlistenSettings) {
+    unlistenSettings();
+    unlistenSettings = null;
+  }
   contentRef.value?.removeEventListener('scroll', handleScroll);
   window.removeEventListener('mousemove', handleTopEdgeMove);
   if (scrollThrottle) {
@@ -412,6 +439,9 @@ onUnmounted(() => {
   }
   if (topEdgeThrottle) {
     clearTimeout(topEdgeThrottle);
+  }
+  if (themeTransitionTimer) {
+    clearTimeout(themeTransitionTimer);
   }
 });
 </script>
@@ -572,7 +602,8 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--bg);
+  color: var(--text-primary);
   overflow: hidden;
   --sidebar-width: 200px;
   --sidebar-gap: 8px;
@@ -585,8 +616,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border-bottom: 1px solid #e1e4e8;
-  background: #fafbfc;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel-bg);
   position: fixed;
   top: 0;
   left: 0;
@@ -613,18 +644,18 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border: 1px solid #d7dade;
-  background: #ffffff;
+  border: 1px solid var(--button-ghost-border);
+  background: var(--button-ghost-bg);
   border-radius: 6px;
   font-size: 13px;
-  color: #2a2a2a;
+  color: var(--button-ghost-text);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .exit-btn:hover {
-  background: #f6f7f8;
-  border-color: #8b95a0;
+  background: var(--bg-alt);
+  border-color: var(--accent-border);
   transform: translateY(-1px);
 }
 
@@ -655,27 +686,27 @@ onUnmounted(() => {
 }
 
 .filter-btn.commands {
-  border-color: #4f87ff;
+  border-color: var(--command-accent);
 }
 
 .filter-btn.commands.active .dot {
-  background: #4f87ff;
+  background: var(--command-accent);
 }
 
 .filter-btn.shortcuts {
-  border-color: #f7a34b;
+  border-color: var(--shortcut-accent);
 }
 
 .filter-btn.shortcuts.active .dot {
-  background: #f7a34b;
+  background: var(--shortcut-accent);
 }
 
 .filter-btn.all {
-  border-color: #8b95a0;
+  border-color: var(--text-muted-strong);
 }
 
 .filter-btn.all.active .dot {
-  background: #8b95a0;
+  background: var(--text-muted-strong);
 }
 
 .filter-btn:hover {
@@ -685,18 +716,18 @@ onUnmounted(() => {
 .search-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d7dade;
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   font-size: 14px;
   outline: none;
-  background: #fafbfc;
-  color: #2a2a2a;
+  background: var(--input-bg);
+  color: var(--text-primary);
 }
 
 .search-input:focus {
-  border-color: #4f87ff;
-  box-shadow: 0 0 0 3px rgba(79, 135, 255, 0.1);
-  background: #ffffff;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-outline);
+  background: var(--panel-bg);
 }
 
 /* Content Area */
@@ -722,14 +753,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #586069;
+  color: var(--text-muted);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid #f6f8fa;
-  border-top-color: #4f87ff;
+  border: 4px solid var(--panel-border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -746,7 +777,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #586069;
+  color: var(--text-muted);
 }
 
 .empty-icon {
@@ -757,7 +788,7 @@ onUnmounted(() => {
 .empty-state h3 {
   margin: 0 0 8px 0;
   font-size: 18px;
-  color: #24292e;
+  color: var(--text-primary);
 }
 
 .empty-state p {
@@ -767,18 +798,18 @@ onUnmounted(() => {
 
 .empty-action-btn {
   padding: 10px 24px;
-  border: 1px solid #d7dade;
-  background: #ffffff;
+  border: 1px solid var(--button-ghost-border);
+  background: var(--button-ghost-bg);
   border-radius: 6px;
   font-size: 14px;
-  color: #2a2a2a;
+  color: var(--button-ghost-text);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .empty-action-btn:hover {
-  background: #f6f7f8;
-  border-color: #8b95a0;
+  background: var(--bg-alt);
+  border-color: var(--accent-border);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -816,13 +847,13 @@ onUnmounted(() => {
 }
 
 .scope-header.commands {
-  color: #4f87ff;
-  border-bottom-color: #4f87ff;
+  color: var(--command-accent);
+  border-bottom-color: var(--command-accent);
 }
 
 .scope-header.shortcuts {
-  color: #f7a34b;
-  border-bottom-color: #f7a34b;
+  color: var(--shortcut-accent);
+  border-bottom-color: var(--shortcut-accent);
 }
 
 .cards-grid {
@@ -869,18 +900,18 @@ onUnmounted(() => {
 
 .pagination-btn {
   padding: 8px 16px;
-  border: 1px solid #d1d5da;
-  background: #ffffff;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #24292e;
+  color: var(--text-primary);
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: #f6f8fa;
-  border-color: #959da5;
+  background: var(--bg-alt);
+  border-color: var(--accent-border);
 }
 
 .pagination-btn:disabled {
@@ -890,7 +921,7 @@ onUnmounted(() => {
 
 .pagination-info {
   font-size: 14px;
-  color: #586069;
+  color: var(--text-muted);
   min-width: 80px;
   text-align: center;
 }
