@@ -621,10 +621,7 @@ mod ui_validation {
 
         let app = mock_app();
         let handle = app.handle().clone();
-        let app_data_dir = handle
-            .path()
-            .app_data_dir()
-            .expect("app_data_dir");
+        let app_data_dir = settings::app_data_dir(&handle).expect("app_data_dir");
 
         settings::ensure_app_config(&handle).expect("ensure_app_config");
         (app, app_data_dir)

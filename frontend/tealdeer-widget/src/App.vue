@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { appLogDir, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { error as logError, info as logInfo, warn as logWarn } from "@tauri-apps/plugin-log";
 import MarkdownIt from "markdown-it";
 import { useI18n } from "vue-i18n";
@@ -498,7 +498,7 @@ function formatTimestamp(seconds: number): string {
 
 async function resolveLogPaths() {
   try {
-    const dir = await appLogDir();
+    const dir = await invoke<string>("get_log_dir");
     logDir.value = dir;
     logRustPath.value = await join(dir, "rust.log");
     logWebviewPath.value = await join(dir, "webview.log");

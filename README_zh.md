@@ -180,7 +180,7 @@ tealdeer_tile
 
 自定义页面存储在：
 ```
-~/.local/share/com.xian00.tealdeer-tile/pages/
+~/.local/share/tealdeer-tile/pages/
 ```
 
 CLI 默认目录：
@@ -197,7 +197,7 @@ CLI 默认目录：
 
 快捷键页面存储在：
 ```
-~/.local/share/com.xian00.tealdeer-tile/shortcut_pages/
+~/.local/share/tealdeer-tile/shortcut_pages/
 ```
 
 CLI 默认目录：
@@ -214,7 +214,7 @@ CLI 默认目录：
 
 **CLI 配置：** `~/.config/tealdeer/config.toml`
 
-**桌面应用配置：** `~/.local/share/com.xian00.tealdeer-tile/config.toml`
+**桌面应用配置：** `~/.local/share/tealdeer-tile/config.toml`
 
 ### 已知问题
 

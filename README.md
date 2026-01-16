@@ -156,7 +156,7 @@ tealdeer_tile         # Launch app
 ### Custom Pages
 
 Custom pages are stored in:
-- Desktop app: `~/.local/share/com.xian00.tealdeer-tile/pages/`
+- Desktop app: `~/.local/share/tealdeer-tile/pages/`
 - CLI: `~/.local/share/tealdeer/pages/`
 
 **File naming:**
@@ -167,7 +167,7 @@ Custom pages are stored in:
 ### Shortcut Pages
 
 Shortcut pages are stored in:
-- Desktop app: `~/.local/share/com.xian00.tealdeer-tile/shortcut_pages/`
+- Desktop app: `~/.local/share/tealdeer-tile/shortcut_pages/`
 - CLI: `~/.local/share/tealdeer/shortcut_pages/`
 
 **File naming:**
@@ -193,7 +193,7 @@ Shortcut pages are stored in:
 ### Configuration
 
 - **CLI config:** `~/.config/tealdeer/config.toml`
-- **Desktop app config:** `~/.local/share/com.xian00.tealdeer-tile/config.toml`
+- **Desktop app config:** `~/.local/share/tealdeer-tile/config.toml`
 
 ### Known Issues
 

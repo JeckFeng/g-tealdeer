@@ -4,12 +4,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use log::{debug, info};
+use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use toml::Value;
 
 use crate::backend::tray_hotkey;
+
+const APP_DATA_DIR_NAME: &str = "tealdeer-tile";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -77,6 +79,14 @@ pub fn set_app_settings<R: tauri::Runtime>(app: AppHandle<R>, settings: AppSetti
         let _ = app.emit("app-settings-updated", settings);
     }
     result
+}
+
+#[tauri::command]
+pub fn get_log_dir<R: tauri::Runtime>(app: AppHandle<R>) -> Result<String, String> {
+    let log_dir = app_data_dir(&app)?.join("logs");
+    fs::create_dir_all(&log_dir)
+        .map_err(|e| format!("Failed to create log dir: {e}"))?;
+    Ok(log_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -154,9 +164,29 @@ pub(crate) fn ensure_app_config<R: Runtime>(app: &AppHandle<R>) -> Result<PathBu
 }
 
 pub(crate) fn app_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    app.path()
+    let default_dir = app
+        .path()
         .app_data_dir()
-        .map_err(|_| "Failed to resolve app data dir.".to_string())
+        .map_err(|_| "Failed to resolve app data dir.".to_string())?;
+    let custom_dir = match replace_last_component(&default_dir, APP_DATA_DIR_NAME) {
+        Some(path) => path,
+        None => return Ok(default_dir),
+    };
+    migrate_dir(&default_dir, &custom_dir)?;
+    Ok(custom_dir)
+}
+
+fn app_config_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let default_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| "Failed to resolve app config dir.".to_string())?;
+    let custom_dir = match replace_last_component(&default_dir, APP_DATA_DIR_NAME) {
+        Some(path) => path,
+        None => return Ok(default_dir),
+    };
+    migrate_dir(&default_dir, &custom_dir)?;
+    Ok(custom_dir)
 }
 
 fn ensure_app_directories<R: Runtime>(
@@ -226,10 +256,63 @@ pub(crate) fn write_app_settings<R: Runtime>(
 }
 
 fn app_settings_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    app.path()
-        .app_config_dir()
-        .map(|dir| dir.join("settings.json"))
-        .map_err(|_| "Failed to resolve app config dir.".to_string())
+    app_config_dir(app).map(|dir| dir.join("settings.json"))
+}
+
+fn replace_last_component(path: &Path, new_name: &str) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    Some(parent.join(new_name))
+}
+
+fn migrate_dir(old_dir: &Path, new_dir: &Path) -> Result<(), String> {
+    if old_dir == new_dir || new_dir.exists() {
+        return Ok(());
+    }
+    if !old_dir.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = new_dir.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent dir: {e}"))?;
+    }
+    match fs::rename(old_dir, new_dir) {
+        Ok(()) => {
+            info!(
+                "Migrated app directory from {} to {}",
+                old_dir.display(),
+                new_dir.display()
+            );
+            Ok(())
+        }
+        Err(err) => {
+            warn!(
+                "Failed to rename app directory ({}). Falling back to copy: {}",
+                err,
+                old_dir.display()
+            );
+            copy_dir_recursive(old_dir, new_dir)?;
+            Ok(())
+        }
+    }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir: {e}"))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir: {e}"))? {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("Failed to read file type: {e}"))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy file: {e}"))?;
+        }
+    }
+    Ok(())
 }
 
 fn read_toml_value(path: &Path) -> Result<Value, String> {

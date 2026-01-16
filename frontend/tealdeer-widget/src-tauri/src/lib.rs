@@ -11,30 +11,7 @@ pub fn run() {
     } else {
         LevelFilter::Info
     };
-    let mut log_targets = Vec::new();
-    log_targets.push(
-        Target::new(TargetKind::LogDir {
-            file_name: Some("rust".into()),
-        })
-        .filter(|metadata| !metadata.target().starts_with(WEBVIEW_TARGET)),
-    );
-    log_targets.push(
-        Target::new(TargetKind::LogDir {
-            file_name: Some("webview".into()),
-        })
-        .filter(|metadata| metadata.target().starts_with(WEBVIEW_TARGET)),
-    );
-    if cfg!(debug_assertions) {
-        log_targets.push(Target::new(TargetKind::Stdout));
-    }
-
     tauri::Builder::default()
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log_level)
-                .targets(log_targets)
-                .build(),
-        )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .manage(backend::immersive_window::ImmersiveWindowManager::new())
@@ -63,6 +40,7 @@ pub fn run() {
             backend::shortcut_pages::read_shortcut_file,
             backend::settings::get_app_settings,
             backend::settings::set_app_settings,
+            backend::settings::get_log_dir,
             backend::settings::get_tealdeer_config,
             backend::settings::get_tealdeer_config_values,
             backend::settings::set_tealdeer_config,
@@ -82,7 +60,10 @@ pub fn run() {
             backend::immersive_window::get_immersive_window_state,
             backend::immersive_window::set_immersive_window_state
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            if let Err(err) = register_log_plugin(app.handle(), log_level) {
+                eprintln!("Log plugin setup failed: {err}");
+            }
             if let Err(err) = backend::tray_hotkey::setup(app.handle()) {
                 eprintln!("Tray/hotkey setup failed: {err}");
             }
@@ -101,4 +82,36 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn register_log_plugin<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    log_level: LevelFilter,
+) -> Result<(), String> {
+    let log_dir = backend::settings::app_data_dir(app)?.join("logs");
+    let mut log_targets = Vec::new();
+    log_targets.push(
+        Target::new(TargetKind::Folder {
+            path: log_dir.clone(),
+            file_name: Some("rust".into()),
+        })
+        .filter(|metadata| !metadata.target().starts_with(WEBVIEW_TARGET)),
+    );
+    log_targets.push(
+        Target::new(TargetKind::Folder {
+            path: log_dir,
+            file_name: Some("webview".into()),
+        })
+        .filter(|metadata| metadata.target().starts_with(WEBVIEW_TARGET)),
+    );
+    if cfg!(debug_assertions) {
+        log_targets.push(Target::new(TargetKind::Stdout));
+    }
+
+    let plugin = tauri_plugin_log::Builder::new()
+        .level(log_level)
+        .targets(log_targets)
+        .build();
+    app.plugin(plugin)
+        .map_err(|e| format!("Failed to register log plugin: {e}"))
 }

@@ -28,7 +28,7 @@ Use `shortcut_page_template.md` as a starting point for creating new shortcut pa
    ```
 
 CLI shortcut pages directory: `~/.local/share/tealdeer/shortcut_pages/`  
-Desktop app shortcut pages directory: `~/.local/share/com.xian00.tealdeer-tile/shortcut_pages/`
+Desktop app shortcut pages directory: `~/.local/share/tealdeer-tile/shortcut_pages/`
 
 ### GUI
 

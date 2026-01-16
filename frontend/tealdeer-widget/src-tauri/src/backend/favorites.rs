@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
+use crate::backend::settings;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FavoriteEntry {
@@ -103,10 +104,7 @@ fn current_timestamp() -> u64 {
 }
 
 fn get_favorites_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let app_data_dir = settings::app_data_dir(app)?;
     
     // 确保目录存在
     fs::create_dir_all(&app_data_dir)
