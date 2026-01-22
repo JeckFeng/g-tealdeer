@@ -1,9 +1,9 @@
 pub mod custom_pages;
-pub mod tealdeer;
-pub mod settings;
-pub mod tray_hotkey;
-pub mod open_paths;
 pub mod favorites;
-pub mod page_manager;
-pub mod shortcut_pages;
 pub mod immersive_window;
+pub mod open_paths;
+pub mod page_manager;
+pub mod settings;
+pub mod shortcut_pages;
+pub mod tealdeer;
+pub mod tray_hotkey;

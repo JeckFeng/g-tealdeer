@@ -56,7 +56,13 @@ pub fn create_or_overwrite_shortcut_patch<R: tauri::Runtime>(
 ) -> Result<FileInfo, String> {
     let slug = slugify(&req.command)?;
     let dir = shortcut_pages_dir(&app)?;
-    PageManager::create_patch(&dir, &slug, &req.command, &req.examples, req.include_header_in_patch)
+    PageManager::create_patch(
+        &dir,
+        &slug,
+        &req.command,
+        &req.examples,
+        req.include_header_in_patch,
+    )
 }
 
 #[tauri::command]
@@ -72,14 +78,15 @@ pub fn append_example_to_shortcut_page<R: tauri::Runtime>(
 }
 
 #[tauri::command]
-pub fn scan_shortcut_pages<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<CustomEntry>, String> {
+pub fn scan_shortcut_pages<R: tauri::Runtime>(
+    app: AppHandle<R>,
+) -> Result<Vec<CustomEntry>, String> {
     let dir = shortcut_pages_dir(&app)?;
     if !dir.exists() {
         return Ok(vec![]);
     }
 
-    let entries = fs::read_dir(&dir)
-        .map_err(|e| format!("Failed to read dir: {e}"))?;
+    let entries = fs::read_dir(&dir).map_err(|e| format!("Failed to read dir: {e}"))?;
 
     let mut results = Vec::new();
     for entry in entries.flatten() {
@@ -88,7 +95,8 @@ pub fn scan_shortcut_pages<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<C
                 if let Some(file_name) = entry.file_name().to_str() {
                     if let Some(classification) = classify_filename(file_name) {
                         let path = entry.path();
-                        let mtime = meta.modified()
+                        let mtime = meta
+                            .modified()
                             .ok()
                             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                             .map(|d| d.as_secs())
@@ -159,7 +167,8 @@ pub fn read_shortcut_file<R: tauri::Runtime>(
 
 fn shortcut_pages_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let paths = get_show_paths_internal(app)?;
-    paths.shortcut_pages_dir
+    paths
+        .shortcut_pages_dir
         .ok_or_else(|| "Shortcut pages directory not configured".to_string())
         .map(PathBuf::from)
 }
@@ -169,8 +178,8 @@ fn resolve_existing_path<R: tauri::Runtime>(
     raw_path: &str,
 ) -> Result<(PathBuf, PathBuf), String> {
     let dir = shortcut_pages_dir(app)?;
-    let dir_canon = fs::canonicalize(&dir)
-        .map_err(|e| format!("Failed to resolve shortcut pages dir: {e}"))?;
+    let dir_canon =
+        fs::canonicalize(&dir).map_err(|e| format!("Failed to resolve shortcut pages dir: {e}"))?;
     let target = PathBuf::from(raw_path);
     if !target.is_absolute() {
         return Err("Path must be absolute.".to_string());
@@ -253,12 +262,14 @@ fn slugify(command: &str) -> Result<String, String> {
     let slug = trimmed
         .to_lowercase()
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-            ch
-        } else if ch.is_whitespace() {
-            '-'
-        } else {
-            '_'
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else if ch.is_whitespace() {
+                '-'
+            } else {
+                '_'
+            }
         })
         .collect::<String>();
 

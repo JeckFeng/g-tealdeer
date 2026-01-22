@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -71,7 +70,10 @@ pub fn get_app_settings<R: tauri::Runtime>(app: AppHandle<R>) -> Result<AppSetti
 }
 
 #[tauri::command]
-pub fn set_app_settings<R: tauri::Runtime>(app: AppHandle<R>, settings: AppSettings) -> Result<(), String> {
+pub fn set_app_settings<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    settings: AppSettings,
+) -> Result<(), String> {
     let current = read_app_settings(&app)?;
     tray_hotkey::apply_app_settings(&app, &current, &settings)?;
     let result = write_app_settings(&app, &settings);
@@ -84,20 +86,20 @@ pub fn set_app_settings<R: tauri::Runtime>(app: AppHandle<R>, settings: AppSetti
 #[tauri::command]
 pub fn get_log_dir<R: tauri::Runtime>(app: AppHandle<R>) -> Result<String, String> {
     let log_dir = app_data_dir(&app)?.join("logs");
-    fs::create_dir_all(&log_dir)
-        .map_err(|e| format!("Failed to create log dir: {e}"))?;
+    fs::create_dir_all(&log_dir).map_err(|e| format!("Failed to create log dir: {e}"))?;
     Ok(log_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub fn get_tealdeer_config<R: tauri::Runtime>(app: AppHandle<R>) -> Result<String, String> {
     let path = ensure_app_config(&app)?;
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read config: {e}"))
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {e}"))
 }
 
 #[tauri::command]
-pub fn get_tealdeer_config_values<R: tauri::Runtime>(app: AppHandle<R>) -> Result<TealdeerConfigValues, String> {
+pub fn get_tealdeer_config_values<R: tauri::Runtime>(
+    app: AppHandle<R>,
+) -> Result<TealdeerConfigValues, String> {
     let path = ensure_app_config(&app)?;
     let value = read_toml_value(&path)?;
     Ok(TealdeerConfigValues {
@@ -111,10 +113,7 @@ pub fn get_tealdeer_config_values<R: tauri::Runtime>(app: AppHandle<R>) -> Resul
 }
 
 #[tauri::command]
-pub fn set_tealdeer_config(
-    app: AppHandle,
-    patch: TealdeerConfigPatch,
-) -> Result<(), String> {
+pub fn set_tealdeer_config(app: AppHandle, patch: TealdeerConfigPatch) -> Result<(), String> {
     let path = ensure_app_config(&app)?;
     let mut value = read_toml_value(&path)?;
     ensure_app_directories(&app, &mut value)?;
@@ -129,7 +128,11 @@ pub fn set_tealdeer_config(
         set_bool(&mut value, &["updates", "auto_update"], auto_update);
     }
     if let Some(interval) = patch.auto_update_interval_hours {
-        set_u64(&mut value, &["updates", "auto_update_interval_hours"], interval);
+        set_u64(
+            &mut value,
+            &["updates", "auto_update_interval_hours"],
+            interval,
+        );
     }
     if let Some(use_pager) = patch.use_pager {
         set_bool(&mut value, &["display", "use_pager"], use_pager);
@@ -147,8 +150,7 @@ pub fn set_tealdeer_config(
 
 pub(crate) fn ensure_app_config<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let config_dir = app_data_dir(app)?;
-    fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create app config dir: {e}"))?;
+    fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create app config dir: {e}"))?;
     let config_path = config_dir.join("config.toml");
 
     let mut value = read_toml_value(&config_path)?;
@@ -189,17 +191,13 @@ fn app_config_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     Ok(custom_dir)
 }
 
-fn ensure_app_directories<R: Runtime>(
-    app: &AppHandle<R>,
-    value: &mut Value,
-) -> Result<(), String> {
+fn ensure_app_directories<R: Runtime>(app: &AppHandle<R>, value: &mut Value) -> Result<(), String> {
     let config_dir = app_data_dir(app)?;
     let cache_dir = config_dir.join("cache");
     let pages_dir = config_dir.join("pages");
     let shortcut_pages_dir = config_dir.join("shortcut_pages");
 
-    fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("Failed to create cache dir: {e}"))?;
+    fs::create_dir_all(&cache_dir).map_err(|e| format!("Failed to create cache dir: {e}"))?;
     fs::create_dir_all(&pages_dir)
         .map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
     fs::create_dir_all(&shortcut_pages_dir)
@@ -234,8 +232,8 @@ pub(crate) fn read_app_settings<R: Runtime>(app: &AppHandle<R>) -> Result<AppSet
     if !path.exists() {
         return Ok(AppSettings::default());
     }
-    let contents = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read app settings: {e}"))?;
+    let contents =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read app settings: {e}"))?;
     serde_json::from_str(&contents).map_err(|e| format!("Invalid app settings: {e}"))
 }
 
@@ -245,8 +243,7 @@ pub(crate) fn write_app_settings<R: Runtime>(
 ) -> Result<(), String> {
     let path = app_settings_path(app)?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create settings dir: {e}"))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create settings dir: {e}"))?;
     }
     let payload =
         serde_json::to_string_pretty(settings).map_err(|e| format!("Failed to serialize: {e}"))?;
@@ -272,8 +269,7 @@ fn migrate_dir(old_dir: &Path, new_dir: &Path) -> Result<(), String> {
         return Ok(());
     }
     if let Some(parent) = new_dir.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create parent dir: {e}"))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create parent dir: {e}"))?;
     }
     match fs::rename(old_dir, new_dir) {
         Ok(()) => {
@@ -290,6 +286,9 @@ fn migrate_dir(old_dir: &Path, new_dir: &Path) -> Result<(), String> {
                 err,
                 old_dir.display()
             );
+            if !old_dir.exists() {
+                return Ok(());
+            }
             copy_dir_recursive(old_dir, new_dir)?;
             Ok(())
         }
@@ -308,8 +307,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
-            fs::copy(&src_path, &dst_path)
-                .map_err(|e| format!("Failed to copy file: {e}"))?;
+            fs::copy(&src_path, &dst_path).map_err(|e| format!("Failed to copy file: {e}"))?;
         }
     }
     Ok(())
@@ -319,8 +317,7 @@ fn read_toml_value(path: &Path) -> Result<Value, String> {
     if !path.exists() {
         return Ok(Value::Table(toml::value::Table::new()));
     }
-    let contents =
-        fs::read_to_string(path).map_err(|e| format!("Failed to read config: {e}"))?;
+    let contents = fs::read_to_string(path).map_err(|e| format!("Failed to read config: {e}"))?;
     if contents.trim().is_empty() {
         return Ok(Value::Table(toml::value::Table::new()));
     }
@@ -330,11 +327,10 @@ fn read_toml_value(path: &Path) -> Result<Value, String> {
 }
 
 fn write_toml_value(path: &Path, value: &Value) -> Result<(), String> {
-    let serialized = toml::to_string_pretty(value)
-        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+    let serialized =
+        toml::to_string_pretty(value).map_err(|e| format!("Failed to serialize config: {e}"))?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create config dir: {e}"))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {e}"))?;
     }
     fs::write(path, serialized).map_err(|e| format!("Failed to write config: {e}"))
 }
@@ -346,9 +342,9 @@ fn ensure_table<'a>(value: &'a mut Value, path: &[&str]) -> &'a mut toml::value:
             *current = Value::Table(toml::value::Table::new());
         }
         let table = current.as_table_mut().expect("table ensured");
-        current = table.entry((*key).to_string()).or_insert_with(|| {
-            Value::Table(toml::value::Table::new())
-        });
+        current = table
+            .entry((*key).to_string())
+            .or_insert_with(|| Value::Table(toml::value::Table::new()));
     }
     current.as_table_mut().expect("table ensured")
 }

@@ -37,7 +37,6 @@ tempfile = "3"
 [features]
 default = ["rustls-with-webpki-roots"]
 logging = ["env_logger"]
-native-tls = []
-rustls-with-webpki-roots = []
-rustls-with-native-roots = []
-
+native-tls = ["ureq/native-tls"]
+rustls-with-webpki-roots = ["ureq/rustls"]
+rustls-with-native-roots = ["ureq/platform-verifier", "ureq/rustls"]

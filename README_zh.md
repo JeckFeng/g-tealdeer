@@ -103,6 +103,25 @@ npm run tauri -- build
 cargo install tealdeer
 ```
 
+**从源码安装（自动配置PATH）：**
+```bash
+# 克隆仓库
+git clone https://github.com/tealdeer-rs/tealdeer.git
+cd tealdeer
+
+# 运行安装脚本（自动配置 bash/zsh/fish）
+./scripts/install_with_path.sh
+
+# 或手动安装
+cargo install --path tldr
+
+# 如果 tldr 命令不可用，手动添加到 PATH：
+# 对于 bash/zsh：
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc  # 或 ~/.zshrc
+# 对于 fish：
+echo 'set -gx PATH $HOME/.cargo/bin $PATH' >> ~/.config/fish/config.fish
+```
+
 **从 GitHub Release：**
 ```bash
 # 从 https://github.com/tealdeer-rs/tealdeer/releases 下载二进制文件

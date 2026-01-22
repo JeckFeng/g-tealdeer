@@ -56,7 +56,7 @@ impl ImmersiveWindowManager {
 
         // Read settings
         let settings = read_app_settings(app).unwrap_or_default();
-        
+
         let state = self.state.lock().unwrap().clone();
         let (width, height) = state.size.unwrap_or((1200, 800));
 

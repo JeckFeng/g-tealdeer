@@ -41,7 +41,11 @@
     "sourceShortcut": "Shortcut",
     "all": "All",
     "commands": "Commands",
-    "shortcuts": "Shortcut Keys"
+    "shortcuts": "Shortcut Keys",
+    "noResultsAll": "Nothing at all~, Nothing to do today.",
+    "noResultsCommand": "Nothing at all~, maybe this is a shortcut?",
+    "noResultsShortcut": "Nothing at all~, perhaps this is a command?",
+    "cacheMissing": "Page cache not found. Please click 'Update Cache' to download."
   },
   "newPage": {
     "title": "New Page",

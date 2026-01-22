@@ -214,6 +214,7 @@ impl Default for RawUpdatesConfig {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)]
 struct RawDirectoriesConfig {
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
@@ -355,6 +356,7 @@ impl fmt::Display for PathWithSource {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)]
 pub struct DirectoriesConfig {
     pub cache_dir: PathWithSource,
     pub shortcut_pages_dir: Option<PathWithSource>,
@@ -570,11 +572,9 @@ impl<'a> Config<'a> {
             })
             .or_else(|| {
                 get_app_root(AppDataType::UserData, &crate::APP_INFO)
-                    .map(|path| {
-                        PathWithSource {
-                            path: path.join("shortcut_pages").join(""),
-                            source: PathSource::OsConvention,
-                        }
+                    .map(|path| PathWithSource {
+                        path: path.join("shortcut_pages").join(""),
+                        source: PathSource::OsConvention,
                     })
                     .ok()
             });

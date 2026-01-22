@@ -81,8 +81,7 @@ pub fn create_or_overwrite_page<R: tauri::Runtime>(
 
     let slug = slugify(&req.command)?;
     let dir = custom_pages_dir(&app)?;
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
 
     let path = dir.join(format!("{slug}.page.md"));
     let contents = format_page(&req.command, &req.summary, &req.examples)?;
@@ -102,11 +101,10 @@ pub fn create_or_overwrite_patch(
 
     let slug = slugify(&req.command)?;
     let dir = custom_pages_dir(&app)?;
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create custom pages dir: {e}"))?;
 
     let path = dir.join(format!("{slug}.patch.md"));
-    
+
     // Check if patch exists and detect duplicates
     let mut warning = None;
     if path.exists() {
@@ -117,9 +115,9 @@ pub fn create_or_overwrite_patch(
             }
         }
     }
-    
+
     let new_content = format_patch(&req.command, &req.examples, req.include_header_in_patch)?;
-    
+
     // Append mode: read existing content and append new examples
     let final_content = if path.exists() {
         if let Ok(mut existing) = fs::read_to_string(&path) {
@@ -133,7 +131,7 @@ pub fn create_or_overwrite_patch(
     } else {
         new_content
     };
-    
+
     write_file(&path, &final_content)?;
     info!("Appended to custom patch: {}", path.display());
 
@@ -141,7 +139,7 @@ pub fn create_or_overwrite_patch(
     if let Some(count) = warning {
         result.path = format!("{}|DUPCOUNT:{}", result.path, count);
     }
-    
+
     Ok(result)
 }
 
@@ -152,7 +150,7 @@ pub fn append_example_to_page<R: tauri::Runtime>(
     example: ExampleInput,
 ) -> Result<CustomFileInfo, String> {
     validate_command_input(&command)?;
-    validate_examples(&[example.clone()])?;
+    validate_examples(std::slice::from_ref(&example))?;
 
     let slug = slugify(&command)?;
     let dir = custom_pages_dir(&app)?;
@@ -162,8 +160,8 @@ pub fn append_example_to_page<R: tauri::Runtime>(
         return Err("Custom page does not exist for this command.".to_string());
     }
 
-    let mut content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read page file: {e}"))?;
+    let mut content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read page file: {e}"))?;
     let block = format_example_block(&example)?;
     content = content.trim_end_matches('\n').to_string();
     content.push_str("\n\n");
@@ -236,7 +234,10 @@ pub fn scan_custom_pages<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<Cus
 }
 
 #[tauri::command]
-pub fn delete_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<(), String> {
+pub fn delete_custom_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    path: String,
+) -> Result<(), String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     fs::remove_file(&target).map_err(|e| format!("Failed to delete file: {e}"))?;
     info!("Deleted custom file: {}", target.display());
@@ -244,7 +245,10 @@ pub fn delete_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) ->
 }
 
 #[tauri::command]
-pub fn disable_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<CustomFileInfo, String> {
+pub fn disable_custom_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    path: String,
+) -> Result<CustomFileInfo, String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     let new_path = disable_path(&target)?;
     let slug = classification_slug(&file_name_str(&new_path)?)?;
@@ -253,7 +257,10 @@ pub fn disable_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -
 }
 
 #[tauri::command]
-pub fn enable_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<CustomFileInfo, String> {
+pub fn enable_custom_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    path: String,
+) -> Result<CustomFileInfo, String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     let new_path = enable_path(&target)?;
     let slug = classification_slug(&file_name_str(&new_path)?)?;
@@ -262,7 +269,10 @@ pub fn enable_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) ->
 }
 
 #[tauri::command]
-pub fn read_custom_file<R: tauri::Runtime>(app: AppHandle<R>, path: String) -> Result<String, String> {
+pub fn read_custom_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    path: String,
+) -> Result<String, String> {
     let (_dir, target) = resolve_existing_path(&app, &path)?;
     fs::read_to_string(&target).map_err(|e| format!("Failed to read file: {e}"))
 }
@@ -275,10 +285,13 @@ fn custom_pages_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, St
     Ok(PathBuf::from(dir))
 }
 
-fn resolve_existing_path<R: tauri::Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<(PathBuf, PathBuf), String> {
+fn resolve_existing_path<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    raw_path: &str,
+) -> Result<(PathBuf, PathBuf), String> {
     let dir = custom_pages_dir(app)?;
-    let dir_canon = fs::canonicalize(&dir)
-        .map_err(|e| format!("Failed to resolve custom pages dir: {e}"))?;
+    let dir_canon =
+        fs::canonicalize(&dir).map_err(|e| format!("Failed to resolve custom pages dir: {e}"))?;
     let target = PathBuf::from(raw_path);
     if !target.is_absolute() {
         return Err("Path must be absolute.".to_string());
@@ -443,15 +456,15 @@ fn format_example_block(example: &ExampleInput) -> Result<String, String> {
 
 fn check_duplicate_examples(existing_content: &str, new_examples: &[ExampleInput]) -> Vec<String> {
     let mut duplicates = Vec::new();
-    
+
     for new_ex in new_examples {
         let new_desc = new_ex.desc.trim();
         let new_cmd = new_ex.cmd.trim();
-        
+
         // Check for duplicate description or command
         for line in existing_content.lines() {
             let trimmed = line.trim();
-            
+
             // Check description (lines starting with "- ")
             if trimmed.starts_with("- ") {
                 let desc_part = trimmed.trim_start_matches("- ").trim_end_matches(':');
@@ -459,7 +472,7 @@ fn check_duplicate_examples(existing_content: &str, new_examples: &[ExampleInput
                     duplicates.push(format!("desc: {}", new_desc));
                 }
             }
-            
+
             // Check command (lines with backticks)
             if trimmed.starts_with('`') && trimmed.ends_with('`') {
                 let cmd_part = trimmed.trim_matches('`');
@@ -469,7 +482,7 @@ fn check_duplicate_examples(existing_content: &str, new_examples: &[ExampleInput
             }
         }
     }
-    
+
     duplicates
 }
 
@@ -535,8 +548,7 @@ fn disable_path(target: &Path) -> Result<PathBuf, String> {
         return Err("Disabled file already exists.".to_string());
     }
 
-    fs::rename(target, &new_path)
-        .map_err(|e| format!("Failed to disable file: {e}"))?;
+    fs::rename(target, &new_path).map_err(|e| format!("Failed to disable file: {e}"))?;
     Ok(new_path)
 }
 
@@ -561,8 +573,7 @@ fn enable_path(target: &Path) -> Result<PathBuf, String> {
         return Err("Enabled file already exists.".to_string());
     }
 
-    fs::rename(target, &new_path)
-        .map_err(|e| format!("Failed to enable file: {e}"))?;
+    fs::rename(target, &new_path).map_err(|e| format!("Failed to enable file: {e}"))?;
     Ok(new_path)
 }
 
@@ -594,9 +605,9 @@ fn slugify(command: &str) -> Result<String, String> {
 
     let slug = slug.trim_matches('-').to_lowercase();
     if slug.is_empty() {
-        return Err("Command resolved to an empty slug.".to_string());
+        Err("Command resolved to an empty slug.".to_string())
     } else {
-        return Ok(slug);
+        Ok(slug)
     }
 }
 
@@ -606,10 +617,17 @@ mod ui_validation {
     use crate::backend::settings;
     use crate::backend::tealdeer;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
     use tauri::test::mock_app;
-    use tauri::Manager;
     use tempfile::tempdir;
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
 
     fn prepare_app() -> (tauri::App<tauri::test::MockRuntime>, PathBuf) {
         let temp = tempdir().expect("tempdir");
@@ -627,14 +645,13 @@ mod ui_validation {
         (app, app_data_dir)
     }
 
-    fn seed_cache(app_data_dir: &PathBuf) -> Result<(), String> {
+    fn seed_cache(app_data_dir: &Path) -> Result<(), String> {
         let pages_dir = app_data_dir
             .join("cache")
             .join("tldr-pages")
             .join("pages.en")
             .join("common");
-        fs::create_dir_all(&pages_dir)
-            .map_err(|e| format!("Failed to create cache dir: {e}"))?;
+        fs::create_dir_all(&pages_dir).map_err(|e| format!("Failed to create cache dir: {e}"))?;
         let page = "# tar\n> Archive files\n\n- list:\n`tar -tf archive.tar`\n";
         fs::write(pages_dir.join("tar.md"), page)
             .map_err(|e| format!("Failed to write page: {e}"))?;
@@ -643,6 +660,7 @@ mod ui_validation {
 
     #[test]
     fn validate_search_new_manage() {
+        let _guard = env_lock();
         let (app, app_data_dir) = prepare_app();
         let handle = app.handle().clone();
         seed_cache(&app_data_dir).expect("seed_cache");
@@ -650,6 +668,7 @@ mod ui_validation {
         let render = tealdeer::render_tldr(
             handle.clone(),
             vec!["tar".to_string()],
+            None,
             None,
             vec!["linux".to_string(), "common".to_string()],
             true,
@@ -674,8 +693,8 @@ mod ui_validation {
         let entries = scan_custom_pages(handle.clone()).expect("scan_custom_pages");
         assert!(entries.iter().any(|entry| entry.command_slug == "demo"));
 
-        let disabled = disable_custom_file(handle.clone(), created.path.clone())
-            .expect("disable_custom_file");
+        let disabled =
+            disable_custom_file(handle.clone(), created.path.clone()).expect("disable_custom_file");
         assert!(disabled.path.ends_with(".disabled"));
 
         let enabled =
@@ -696,6 +715,7 @@ mod ui_validation {
 
     #[test]
     fn validate_update_best_effort() {
+        let _guard = env_lock();
         let (app, _app_data_dir) = prepare_app();
         let handle = app.handle().clone();
         match tealdeer::update_cache_internal(&handle) {

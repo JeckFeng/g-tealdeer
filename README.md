@@ -95,6 +95,25 @@ For detailed instructions, see [docs/Build_CLI.md](docs/Build_CLI.md).
 cargo install tealdeer
 ```
 
+**From source (with automatic PATH configuration):**
+```bash
+# Clone repository
+git clone https://github.com/tealdeer-rs/tealdeer.git
+cd tealdeer
+
+# Run installer (automatically configures bash/zsh/fish)
+./scripts/install_with_path.sh
+
+# Or manual installation
+cargo install --path tldr
+
+# If tldr command not found, add to PATH:
+# For bash/zsh:
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc  # or ~/.zshrc
+# For fish:
+echo 'set -gx PATH $HOME/.cargo/bin $PATH' >> ~/.config/fish/config.fish
+```
+
 **From GitHub Release:**
 ```bash
 # Download from https://github.com/tealdeer-rs/tealdeer/releases

@@ -36,12 +36,12 @@ impl PageManager {
         Self::validate_summary(summary)?;
         Self::validate_examples(examples)?;
         fs::create_dir_all(dir).map_err(|e| format!("Failed to create dir: {e}"))?;
-        
+
         let path = dir.join(format!("{slug}.page.md"));
         let contents = Self::format_page(command, summary, examples)?;
         Self::write_file(&path, &contents)?;
         info!("Created page: {}", path.display());
-        
+
         Ok(Self::build_info(&path, slug.to_string()))
     }
 
@@ -55,9 +55,9 @@ impl PageManager {
         Self::validate_command_input(command)?;
         Self::validate_examples(examples)?;
         fs::create_dir_all(dir).map_err(|e| format!("Failed to create dir: {e}"))?;
-        
+
         let path = dir.join(format!("{slug}.patch.md"));
-        
+
         // Check if patch exists and detect duplicates
         let mut warning = None;
         if path.exists() {
@@ -68,9 +68,9 @@ impl PageManager {
                 }
             }
         }
-        
+
         let new_content = Self::format_patch(command, examples, include_header)?;
-        
+
         // Append mode: read existing content and append new examples
         let final_content = if path.exists() {
             if let Ok(mut existing) = fs::read_to_string(&path) {
@@ -84,15 +84,15 @@ impl PageManager {
         } else {
             new_content
         };
-        
+
         Self::write_file(&path, &final_content)?;
         info!("Appended to patch: {}", path.display());
-        
+
         let mut result = Self::build_info(&path, slug.to_string());
         if let Some(count) = warning {
             result.path = format!("{}|DUPCOUNT:{}", result.path, count);
         }
-        
+
         Ok(result)
     }
 
@@ -101,14 +101,14 @@ impl PageManager {
         if !path.is_file() {
             return Err("Target page does not exist.".to_string());
         }
-        let mut content = fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read file: {e}"))?;
-        
+        let mut content =
+            fs::read_to_string(path).map_err(|e| format!("Failed to read file: {e}"))?;
+
         let example_block = Self::format_example_block(example)?;
         content = content.trim_end_matches('\n').to_string();
         content.push_str("\n\n");
         content.push_str(&example_block);
-        
+
         Self::write_file(path, &content)?;
         info!("Appended example to: {}", path.display());
         let slug = Self::extract_slug(path)?;
@@ -137,7 +137,11 @@ impl PageManager {
         fs::read_to_string(path).map_err(|e| format!("Failed to read: {e}"))
     }
 
-    fn format_page(command: &str, summary: &str, examples: &[ExampleInput]) -> Result<String, String> {
+    fn format_page(
+        command: &str,
+        summary: &str,
+        examples: &[ExampleInput],
+    ) -> Result<String, String> {
         let mut md = format!("# {}\n\n> {}\n\n", command.trim(), summary.trim());
         for (idx, ex) in examples.iter().enumerate() {
             md.push_str(&Self::format_example_block(ex)?);
@@ -148,7 +152,11 @@ impl PageManager {
         Ok(md)
     }
 
-    fn format_patch(command: &str, examples: &[ExampleInput], include_header: bool) -> Result<String, String> {
+    fn format_patch(
+        command: &str,
+        examples: &[ExampleInput],
+        include_header: bool,
+    ) -> Result<String, String> {
         let mut md = String::new();
         if include_header {
             md.push_str(&format!("# {}\n\n", command.trim()));
@@ -171,23 +179,26 @@ impl PageManager {
         Ok(format!("- {desc}:\n\n`{cmd}`\n"))
     }
 
-    fn check_duplicate_examples(existing_content: &str, new_examples: &[ExampleInput]) -> Vec<String> {
+    fn check_duplicate_examples(
+        existing_content: &str,
+        new_examples: &[ExampleInput],
+    ) -> Vec<String> {
         let mut duplicates = Vec::new();
-        
+
         for new_ex in new_examples {
             let new_desc = new_ex.desc.trim();
             let new_cmd = new_ex.cmd.trim();
-            
+
             for line in existing_content.lines() {
                 let trimmed = line.trim();
-                
+
                 if trimmed.starts_with("- ") {
                     let desc_part = trimmed.trim_start_matches("- ").trim_end_matches(':');
                     if desc_part == new_desc {
                         duplicates.push(format!("desc: {}", new_desc));
                     }
                 }
-                
+
                 if trimmed.starts_with('`') && trimmed.ends_with('`') {
                     let cmd_part = trimmed.trim_matches('`');
                     if cmd_part == new_cmd {
@@ -196,7 +207,7 @@ impl PageManager {
                 }
             }
         }
-        
+
         duplicates
     }
 

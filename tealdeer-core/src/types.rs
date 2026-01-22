@@ -249,15 +249,10 @@ mod test {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum PageScope {
+    #[default]
     Command,
     Shortcut,
-}
-
-impl Default for PageScope {
-    fn default() -> Self {
-        Self::Command
-    }
 }

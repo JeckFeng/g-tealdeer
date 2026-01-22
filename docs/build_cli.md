@@ -197,7 +197,7 @@ npm run tauri dev
 
 # 4. 构建 release
 npm run tauri build # 生成所有默认格式（AppImage、deb 等）；
-npm run bundle:linux  # 使用':linux '解决的错误
+npm run bundle:linux  # 使用':linux '解决`failed to run linuxdeploy`的错误
 npm run bundle:linux:deb-rpm # 只生成 deb 和 rpm 包
 # 5. 输出位置
 # Linux: /path/to/tealdeer/target/release/bundle/deb/

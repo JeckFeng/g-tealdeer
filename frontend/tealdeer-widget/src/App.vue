@@ -135,6 +135,7 @@ const commandInput = ref("");
 const language = ref("");
 const platforms = ref<string[]>(["linux", "common"]);
 const rawOutput = ref("");
+const isNoResults = ref(false);
 const isLoading = ref(false);
 const isOffline = ref(!navigator.onLine);
 const showOfflineBanner = ref(false);
@@ -729,6 +730,7 @@ async function openCustomDir() {
 async function renderCommandWithScope(command: string, scope: "command" | "shortcut") {
   isLoading.value = true;
   rawOutput.value = "";
+  isNoResults.value = false;
 
   try {
     const tokens = tokenizeCommand(command);
@@ -748,8 +750,24 @@ async function renderCommandWithScope(command: string, scope: "command" | "short
     lastRenderScope.value = scope;
     viewMode.value = "rendered";
   } catch (err) {
-    showErrorToast(normalizeError(err));
-    logUiError(`Render failed: ${normalizeError(err)}`);
+    const errorMsg = normalizeError(err);
+    
+    // 精确区分错误类型，避免误导用户
+    if (errorMsg.includes("Page cache not found")) {
+      showErrorToast(t("search.cacheMissing"));
+      logUiError(`Cache not initialized: ${command}`);
+    } else if (errorMsg.includes("not found in cache")) {
+      rawOutput.value =
+        scope === "command"
+          ? t("search.noResultsCommand")
+          : t("search.noResultsShortcut");
+      viewMode.value = "rendered";
+      isNoResults.value = true;
+      logUiInfo(`Page not found in ${scope} scope: ${command}`);
+    } else {
+      showErrorToast(errorMsg);
+      logUiError(`Render failed: ${errorMsg}`);
+    }
   } finally {
     isLoading.value = false;
   }
@@ -775,6 +793,8 @@ async function runSearch() {
   try {
     const command = commandInput.value.trim();
     logUiInfo(`Search run: ${command}`);
+    isNoResults.value = false;
+    
     if (pageScope.value === "all") {
       isLoading.value = true;
       rawOutput.value = "";
@@ -785,10 +805,40 @@ async function runSearch() {
         scope: "all",
       });
       searchResults.value = result;
+
+      // All模式：如果没有结果，显示友好提示
+      if (result.length === 0) {
+        rawOutput.value = t("search.noResultsAll");
+        viewMode.value = "rendered";
+        isNoResults.value = true;
+      }
+    } else if (pageScope.value === "shortcut") {
+      isLoading.value = true;
+      rawOutput.value = "";
+      searchResults.value = [];
+      searchResultsQuery.value = "";
+
+      const result = await invoke<SearchEntry[]>("search_pages", {
+        query: command,
+        scope: "shortcut",
+      });
+
+      const normalized = tokenizeCommand(command).join("-").toLowerCase();
+      const exact = result.find(
+        (entry) => entry.name.toLowerCase() === normalized,
+      );
+
+      if (!exact) {
+        rawOutput.value = t("search.noResultsShortcut");
+        viewMode.value = "rendered";
+        isNoResults.value = true;
+      } else {
+        await renderCommandWithScope(exact.name, "shortcut");
+      }
     } else {
       searchResults.value = [];
       searchResultsQuery.value = "";
-      await renderCommandWithScope(command, pageScope.value);
+      await renderCommandWithScope(command, "command");
     }
 
     addToSearchHistory(command);
@@ -797,7 +847,7 @@ async function runSearch() {
     showErrorToast(normalizeError(err));
     logUiError(`Search failed: ${normalizeError(err)}`);
   } finally {
-    if (pageScope.value === "all") {
+    if (pageScope.value !== "command") {
       isLoading.value = false;
     }
   }
@@ -1682,11 +1732,11 @@ onBeforeUnmount(() => {
         </div>
       </form>
 
-      <div v-if="pageScope === 'all' && searchResultsQuery" class="search-results">
-        <div v-if="searchResults.length === 0" class="empty">
-          {{ t('search.noResults') }}
-        </div>
-        <div v-else>
+      <div
+        v-if="pageScope === 'all' && searchResultsQuery && searchResults.length > 0"
+        class="search-results"
+      >
+        <div>
           <div
             v-if="groupedSearchResults.command.length"
             class="result-group"
@@ -2213,7 +2263,7 @@ onBeforeUnmount(() => {
           }}
         </div>
         <RenderedPage
-          v-if="viewMode === 'rendered' && parsedPage"
+          v-if="viewMode === 'rendered' && parsedPage && !isNoResults"
           :parsed-page="parsedPage"
           :is-favorited="(cmd) => isFavorite(parsedPage?.title || commandInput, cmd, lastRenderScope)"
           :extras-html="extrasHtml"

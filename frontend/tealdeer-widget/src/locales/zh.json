@@ -41,7 +41,11 @@
     "sourceShortcut": "快捷键",
     "all": "全部",
     "commands": "命令",
-    "shortcuts": "快捷键"
+    "shortcuts": "快捷键",
+    "noResultsAll": "什么也没有～，今日无事可做。",
+    "noResultsCommand": "什么也没有～，或许这是一个快捷键？",
+    "noResultsShortcut": "什么也没有～，或许这是一条命令？",
+    "cacheMissing": "页面缓存未找到，请点击“更新缓存”下载。"
   },
   "newPage": {
     "title": "新建页面",

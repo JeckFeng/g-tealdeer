@@ -1,12 +1,12 @@
 use log::{info, warn};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 
-use tealdeer::{run, RunArgs, RunOutput};
 use tealdeer::types::{ColorOptions, PageScope, PlatformType};
+use tealdeer::{run, RunArgs, RunOutput};
 
 use crate::backend::settings::ensure_app_config;
 
@@ -138,6 +138,7 @@ pub fn list_commands<R: tauri::Runtime>(app: AppHandle<R>) -> Result<Vec<String>
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn render_tldr<R: tauri::Runtime>(
     app: AppHandle<R>,
     command_tokens: Vec<String>,
@@ -179,6 +180,7 @@ pub fn render_tldr<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn preview_effective_output(
     app: AppHandle,
     command_tokens: Vec<String>,
@@ -205,21 +207,21 @@ pub fn preview_effective_output(
 #[tauri::command]
 pub async fn update_cache<R: tauri::Runtime>(
     app: AppHandle<R>,
-    window: tauri::Window<R>
+    window: tauri::Window<R>,
 ) -> Result<RenderResult, String> {
     // 在后台线程执行，避免阻塞 UI
     tokio::task::spawn_blocking(move || {
         // 发送开始事件
         let _ = window.emit("cache-update-progress", "Downloading tldr pages...");
-        
+
         // 执行更新
         let result = update_cache_internal(&app);
-        
+
         // 发送完成事件
         if result.is_ok() {
             let _ = window.emit("cache-update-progress", "Update complete!");
         }
-        
+
         result
     })
     .await
@@ -247,9 +249,7 @@ pub(crate) fn update_cache_internal<R: Runtime>(
     })
 }
 
-pub(crate) fn get_show_paths_internal<R: Runtime>(
-    app: &AppHandle<R>,
-) -> Result<ShowPaths, String> {
+pub(crate) fn get_show_paths_internal<R: Runtime>(app: &AppHandle<R>) -> Result<ShowPaths, String> {
     let config_path = ensure_app_config(app)?;
     let args = RunArgs {
         scope: PageScope::Command,
@@ -277,6 +277,7 @@ pub(crate) fn get_show_paths_internal<R: Runtime>(
     Ok(parse_show_paths(&output.stdout))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_render<R: Runtime>(
     app: &AppHandle<R>,
     command_tokens: Vec<String>,
@@ -296,7 +297,7 @@ fn run_render<R: Runtime>(
         Some("shortcut") => PageScope::Shortcut,
         _ => PageScope::Command,
     };
-    
+
     let args = RunArgs {
         scope: page_scope,
         command: command_tokens,
@@ -424,12 +425,41 @@ fn parse_show_paths(output: &str) -> ShowPaths {
 }
 
 fn matches_query(name: &str, summary: Option<&str>, query: &str) -> bool {
+    let query_lower = query.trim().to_lowercase();
+    if query_lower.is_empty() {
+        return false;
+    }
     let name_lower = name.to_lowercase();
-    if name_lower.contains(query) {
+    
+    // 策略1: 直接子串匹配
+    if name_lower.contains(&query_lower) {
         return true;
     }
+    
+    // 策略2: 分词匹配（处理空格/连字符差异）
+    let query_tokens: Vec<&str> = query_lower
+        .split(|c: char| c.is_whitespace() || c == '-')
+        .filter(|s| !s.is_empty())
+        .collect();
+    
+    if !query_tokens.is_empty() {
+        let name_tokens: Vec<&str> = name_lower
+            .split(|c: char| c.is_whitespace() || c == '-')
+            .filter(|s| !s.is_empty())
+            .collect();
+        
+        let all_tokens_match = query_tokens.iter().all(|qt| {
+            name_tokens.iter().any(|nt| nt.contains(qt))
+        });
+        
+        if all_tokens_match {
+            return true;
+        }
+    }
+    
+    // 策略3: 摘要匹配
     summary
-        .map(|text| text.to_lowercase().contains(query))
+        .map(|text| text.to_lowercase().contains(&query_lower))
         .unwrap_or(false)
 }
 
@@ -560,5 +590,54 @@ fn sanitize_err(message: &str) -> String {
         "Unknown error".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches_query_direct_match() {
+        assert!(matches_query("git-checkout", None, "git-checkout"));
+        assert!(matches_query("git-checkout", None, "git"));
+        assert!(matches_query("git-checkout", None, "checkout"));
+    }
+
+    #[test]
+    fn test_matches_query_token_match() {
+        assert!(matches_query("git-checkout", None, "git checkout"));
+        assert!(matches_query("git checkout", None, "git-checkout"));
+        assert!(matches_query("testCommand-para", None, "testCommand para"));
+    }
+
+    #[test]
+    fn test_matches_query_partial_token_match() {
+        assert!(matches_query("git-checkout", None, "git che"));
+        assert!(matches_query("git-checkout", None, "gi check"));
+    }
+
+    #[test]
+    fn test_matches_query_summary_match() {
+        assert!(matches_query("foo", Some("git checkout branch"), "checkout"));
+        assert!(!matches_query("foo", Some("bar"), "checkout"));
+    }
+
+    #[test]
+    fn test_matches_query_case_insensitive() {
+        assert!(matches_query("Git-Checkout", None, "git checkout"));
+        assert!(matches_query("git-checkout", None, "GIT CHECKOUT"));
+    }
+
+    #[test]
+    fn test_matches_query_no_match() {
+        assert!(!matches_query("git-checkout", None, "svn"));
+        assert!(!matches_query("git-checkout", None, "git push"));
+    }
+
+    #[test]
+    fn test_matches_query_empty_query() {
+        assert!(!matches_query("git-checkout", None, ""));
+        assert!(!matches_query("git-checkout", None, "   "));
     }
 }

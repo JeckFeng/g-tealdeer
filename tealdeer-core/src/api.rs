@@ -187,16 +187,22 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
     let shortcut_scope = matches!(args.scope, crate::types::PageScope::Shortcut);
 
     // For shortcut scope, use a dummy path to skip TLDR cache lookup
-    let dummy_pages_dir = config.directories.cache_dir.path().join("__shortcut_only__");
+    let dummy_pages_dir = config
+        .directories
+        .cache_dir
+        .path()
+        .join("__shortcut_only__");
     let pages_directory = match args.scope {
-        crate::types::PageScope::Command => config.directories.cache_dir.path().join(TLDR_PAGES_DIR),
+        crate::types::PageScope::Command => {
+            config.directories.cache_dir.path().join(TLDR_PAGES_DIR)
+        }
         crate::types::PageScope::Shortcut => {
             // Create the dummy directory if it doesn't exist
             let _ = std::fs::create_dir_all(&dummy_pages_dir);
             dummy_pages_dir
         }
     };
-    
+
     let cache_config = CacheConfig {
         pages_directory: &pages_directory,
         custom_pages_directory: custom_pages_dir,
@@ -542,12 +548,14 @@ fn push_error(output: &mut RunOutput, enable_styles: bool, error: &anyhow::Error
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::PageScope;
     use std::fs;
 
     use tempfile::tempdir;
 
     fn base_args(config_path: PathBuf) -> RunArgs {
         RunArgs {
+            scope: PageScope::Command,
             command: Vec::new(),
             list: false,
             edit_page: false,
