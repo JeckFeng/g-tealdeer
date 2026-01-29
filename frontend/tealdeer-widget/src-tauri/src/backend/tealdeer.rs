@@ -26,6 +26,8 @@ pub struct RenderResult {
     pub stderr: String,
     pub status: Option<i32>,
     pub timed_out: bool,
+    pub fallback_from: Option<String>,
+    pub filters: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -176,6 +178,8 @@ pub fn render_tldr<R: tauri::Runtime>(
         stderr: output.stderr,
         status: Some(output.exit_code),
         timed_out: false,
+        fallback_from: output.fallback_from,
+        filters: output.fallback_filters,
     })
 }
 
@@ -246,6 +250,8 @@ pub(crate) fn update_cache_internal<R: Runtime>(
         stderr: output.stderr,
         status: Some(output.exit_code),
         timed_out: false,
+        fallback_from: None,
+        filters: Vec::new(),
     })
 }
 

@@ -45,7 +45,10 @@
     "noResultsAll": "什么也没有～，今日无事可做。",
     "noResultsCommand": "什么也没有～，或许这是一个快捷键？",
     "noResultsShortcut": "什么也没有～，或许这是一条命令？",
-    "cacheMissing": "页面缓存未找到，请点击“更新缓存”下载。"
+    "cacheMissing": "页面缓存未找到，请点击“更新缓存”下载。",
+    "fallbackNotice": "显示 {resolved}（已按：{filters} 过滤）",
+    "fallbackEmpty": "未找到匹配示例：{filters}",
+    "fallbackShowFull": "显示完整页面"
   },
   "newPage": {
     "title": "新建页面",
@@ -63,6 +66,8 @@
     "includePatchHeader": "在补丁中包含标题",
     "examples": "示例",
     "addExample": "添加示例",
+    "clearAllExamples": "清空全部",
+    "confirmClearAll": "确定要清空所有示例吗？",
     "descriptionPlaceholder": "描述",
     "commandPlaceholder": "命令",
     "generate": "生成",
@@ -74,11 +79,11 @@
     "shortcutPage": "快捷键页面",
     "duplicateWarning": "警告：检测到 {count} 个重复项",
     "application": "应用",
-    "applicationPlaceholder": "Application",
+    "applicationPlaceholder": "应用名称",
     "shortcutKey": "快捷键",
-    "shortcutKeyPlaceholder": "Shortcut Key",
-    "summaryPlaceholderShortcut": "One line Summary",
-    "descriptionPlaceholderShortcut": "Description"
+    "shortcutKeyPlaceholder": "快捷键",
+    "summaryPlaceholderShortcut": "一行摘要",
+    "descriptionPlaceholderShortcut": "功能描述"
   },
   "manage": {
     "title": "管理",

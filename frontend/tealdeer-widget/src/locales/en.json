@@ -45,7 +45,10 @@
     "noResultsAll": "Nothing at all~, Nothing to do today.",
     "noResultsCommand": "Nothing at all~, maybe this is a shortcut?",
     "noResultsShortcut": "Nothing at all~, perhaps this is a command?",
-    "cacheMissing": "Page cache not found. Please click 'Update Cache' to download."
+    "cacheMissing": "Page cache not found. Please click 'Update Cache' to download.",
+    "fallbackNotice": "Showing {resolved} (filtered by: {filters})",
+    "fallbackEmpty": "No examples matched filters: {filters}",
+    "fallbackShowFull": "Show full page"
   },
   "newPage": {
     "title": "New Page",
@@ -63,6 +66,8 @@
     "includePatchHeader": "Include header in patch",
     "examples": "Examples",
     "addExample": "Add Example",
+    "clearAllExamples": "Clear All",
+    "confirmClearAll": "Are you sure you want to clear all examples?",
     "descriptionPlaceholder": "Description",
     "commandPlaceholder": "Command",
     "generate": "Generate",

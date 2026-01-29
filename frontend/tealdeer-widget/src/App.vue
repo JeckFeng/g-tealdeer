@@ -25,6 +25,8 @@ type RenderResult = {
   stderr: string;
   status: number | null;
   timed_out: boolean;
+  fallback_from?: string | null;
+  filters?: string[];
 };
 
 type CustomFileInfo = {
@@ -136,6 +138,8 @@ const language = ref("");
 const platforms = ref<string[]>(["linux", "common"]);
 const rawOutput = ref("");
 const isNoResults = ref(false);
+const fallbackInfo = ref<{ from: string; filters: string[] } | null>(null);
+const fallbackNoMatches = ref(false);
 const isLoading = ref(false);
 const isOffline = ref(!navigator.onLine);
 const showOfflineBanner = ref(false);
@@ -301,6 +305,18 @@ const parsedPage = computed<ParsedPage | null>(() => {
   }
 });
 
+const fallbackResolvedTitle = computed(() => {
+  return parsedPage.value?.title || lastCommand.value || "";
+});
+
+const fallbackFiltersLabel = computed(() => {
+  return fallbackInfo.value?.filters.join(", ") || "";
+});
+
+const showFallbackBanner = computed(() => {
+  return !!fallbackInfo.value && fallbackInfo.value.filters.length > 0;
+});
+
 const extrasHtml = computed(() => {
   if (!parsedPage.value?.extras.length) {
     return "";
@@ -332,6 +348,18 @@ const groupedSearchResults = computed(() => {
 
 function tokenizeCommand(value: string): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
+}
+
+function tokenizeMatch(value: string): string[] {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/[\s-]+/)
+    .filter(Boolean);
+}
+
+function isTokenSubset(queryTokens: string[], slugTokens: string[]): boolean {
+  return queryTokens.every((token) => slugTokens.includes(token));
 }
 
 // 计算属性：动态 placeholder
@@ -399,6 +427,14 @@ function formatSearchSource(source: string): string {
   if (source === "custom") return t("search.sourceCustom");
   if (source === "shortcut") return t("search.sourceShortcut");
   return source;
+}
+
+async function showFullFallbackPage() {
+  const resolved = fallbackResolvedTitle.value;
+  if (!resolved) {
+    return;
+  }
+  await renderCommandWithScope(resolved, "command");
 }
 
 function logUiInfo(message: string) {
@@ -731,6 +767,8 @@ async function renderCommandWithScope(command: string, scope: "command" | "short
   isLoading.value = true;
   rawOutput.value = "";
   isNoResults.value = false;
+  fallbackInfo.value = null;
+  fallbackNoMatches.value = false;
 
   try {
     const tokens = tokenizeCommand(command);
@@ -749,6 +787,14 @@ async function renderCommandWithScope(command: string, scope: "command" | "short
     lastCommand.value = command;
     lastRenderScope.value = scope;
     viewMode.value = "rendered";
+
+    if (result.fallback_from && result.filters && result.filters.length > 0) {
+      fallbackInfo.value = {
+        from: result.fallback_from,
+        filters: result.filters,
+      };
+      fallbackNoMatches.value = result.stderr.includes("No examples matched filters:");
+    }
   } catch (err) {
     const errorMsg = normalizeError(err);
     
@@ -794,6 +840,8 @@ async function runSearch() {
     const command = commandInput.value.trim();
     logUiInfo(`Search run: ${command}`);
     isNoResults.value = false;
+    fallbackInfo.value = null;
+    fallbackNoMatches.value = false;
     
     if (pageScope.value === "all") {
       isLoading.value = true;
@@ -823,17 +871,18 @@ async function runSearch() {
         scope: "shortcut",
       });
 
-      const normalized = tokenizeCommand(command).join("-").toLowerCase();
-      const exact = result.find(
-        (entry) => entry.name.toLowerCase() === normalized,
-      );
+      const queryTokens = tokenizeMatch(command);
+      const match = result.find((entry) => {
+        const slugTokens = tokenizeMatch(entry.name);
+        return isTokenSubset(queryTokens, slugTokens);
+      });
 
-      if (!exact) {
+      if (!match) {
         rawOutput.value = t("search.noResultsShortcut");
         viewMode.value = "rendered";
         isNoResults.value = true;
       } else {
-        await renderCommandWithScope(exact.name, "shortcut");
+        await renderCommandWithScope(match.name, "shortcut");
       }
     } else {
       searchResults.value = [];
@@ -1397,13 +1446,22 @@ function previewRaw() {
   }
 }
 
-function addExample() {
-  examples.value.push({ desc: "", cmd: "" });
+function insertExample(index: number) {
+  if (newMode.value === "append") {
+    return;
+  }
+  examples.value.splice(index + 1, 0, { desc: "", cmd: "" });
 }
 
 function removeExample(index: number) {
   if (examples.value.length > 1) {
     examples.value.splice(index, 1);
+  }
+}
+
+function clearAllExamples() {
+  if (examples.value.length > 1 && confirm(t('newPage.confirmClearAll'))) {
+    examples.value = [{ desc: '', cmd: '' }];
   }
 }
 
@@ -1425,6 +1483,16 @@ watch(
     if (value !== "all") {
       searchResults.value = [];
       searchResultsQuery.value = "";
+    }
+  },
+);
+
+watch(
+  () => newMode.value,
+  (value) => {
+    if (value === "append") {
+      const [first] = examples.value;
+      examples.value = [first ?? { desc: "", cmd: "" }];
     }
   },
 );
@@ -1875,11 +1943,12 @@ onBeforeUnmount(() => {
             <span>{{ t('newPage.examples') }}</span>
             <button
               v-if="newMode !== 'append'"
-              class="ghost"
+              class="clear-all"
               type="button"
-              @click="addExample"
+              :disabled="examples.length <= 1"
+              @click="clearAllExamples"
             >
-              {{ t('newPage.addExample') }}
+              {{ t('newPage.clearAllExamples') }}
             </button>
           </div>
 
@@ -1889,27 +1958,37 @@ onBeforeUnmount(() => {
             class="example-row"
             v-show="newMode !== 'append' || index === 0"
           >
-            <input
-              v-model="example.desc"
-              type="text"
-              :placeholder="newPageType === 'shortcut' ? t('newPage.descriptionPlaceholderShortcut') : t('newPage.descriptionPlaceholder')"
-              
-            />
-            <input
-              v-model="example.cmd"
-              type="text"
-              :placeholder="newPageType === 'shortcut' ? t('newPage.shortcutKeyPlaceholder') : t('newPage.commandPlaceholder')"
-              
-            />
-            <button
-              v-if="examples.length > 1 && newMode !== 'append'"
-              class="icon"
-              type="button"
-              @click="removeExample(index)"
-              aria-label="Remove example"
-            >
-              X
-            </button>
+            <div class="example-fields">
+              <input
+                v-model="example.desc"
+                type="text"
+                :placeholder="newPageType === 'shortcut' ? t('newPage.descriptionPlaceholderShortcut') : t('newPage.descriptionPlaceholder')"
+              />
+              <input
+                v-model="example.cmd"
+                type="text"
+                :placeholder="newPageType === 'shortcut' ? t('newPage.shortcutKeyPlaceholder') : t('newPage.commandPlaceholder')"
+              />
+            </div>
+            <div class="example-actions" v-if="newMode !== 'append'" :class="{ 'single': examples.length === 1 }">
+              <button
+                class="icon add"
+                type="button"
+                @click="insertExample(index)"
+                aria-label="Insert example"
+              >
+                +
+              </button>
+              <button
+                v-if="examples.length > 1"
+                class="icon remove"
+                type="button"
+                @click="removeExample(index)"
+                aria-label="Remove example"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2252,6 +2331,24 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="output-body">
+        <div v-if="showFallbackBanner && rawOutput" class="fallback-banner">
+          <div class="fallback-text">
+            <span class="fallback-title">
+              {{ t('search.fallbackNotice', { resolved: fallbackResolvedTitle, filters: fallbackFiltersLabel }) }}
+            </span>
+            <span v-if="fallbackNoMatches" class="fallback-empty">
+              {{ t('search.fallbackEmpty', { filters: fallbackFiltersLabel }) }}
+            </span>
+          </div>
+          <button
+            v-if="fallbackNoMatches"
+            type="button"
+            class="ghost small"
+            @click="showFullFallbackPage"
+          >
+            {{ t('search.fallbackShowFull') }}
+          </button>
+        </div>
         <div v-if="isLoading" class="loading">
           {{ t('search.fetching') }}
         </div>
@@ -3028,19 +3125,99 @@ select optgroup {
   color: var(--text-muted-strong);
 }
 
+.clear-all {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #e07a5f;
+  background: rgba(224, 122, 95, 0.12);
+  border: 1px solid rgba(224, 122, 95, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-all:hover:not(:disabled) {
+  background: rgba(224, 122, 95, 0.2);
+  border-color: rgba(224, 122, 95, 0.5);
+}
+
+.clear-all:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .example-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  display: flex;
   gap: 12px;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 16px;
+  padding: 12px 14px;
+  backdrop-filter: blur(10px) saturate(1.4);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.example-row:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.3) contrast(1.05);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+}
+
+.example-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.example-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.example-actions.single {
+  justify-content: center;
+}
+
+:root[data-theme="dark"] .example-row {
+  background: rgba(15, 18, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.icon.add {
+  background: rgba(42, 157, 143, 0.18);
+  border-color: rgba(42, 157, 143, 0.4);
+  color: #1f6f64;
+}
+
+.icon.remove {
+  background: rgba(224, 122, 95, 0.2);
+  border-color: rgba(224, 122, 95, 0.5);
+  color: #8a3c28;
 }
 
 .icon {
-  width: 36px;
-  height: 36px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 1px solid var(--icon-border);
   background: var(--icon-bg);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .actions {
@@ -3177,6 +3354,39 @@ h2 {
   border: 1px solid var(--output-border);
 }
 
+.fallback-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid var(--warning-text);
+  margin-bottom: 16px;
+}
+
+.fallback-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fallback-title {
+  font-weight: 600;
+}
+
+.fallback-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted-strong);
+}
+
+.ghost.small {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
 .alert {
   padding: 14px 16px;
   border-radius: 12px;
@@ -3268,11 +3478,6 @@ h2 {
 
   .example-row {
     grid-template-columns: 1fr;
-  }
-
-  .icon {
-    width: 100%;
-    border-radius: 12px;
   }
 }
 

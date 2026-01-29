@@ -2,18 +2,24 @@ use std::{
     env,
     fmt::Write as _,
     fs::create_dir_all,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
 };
 
 use anyhow::{anyhow, Context, Result};
 use log::debug;
+use yansi::Paint;
 
 use crate::{
     cache::{Cache, CacheConfig, PageLookupResult, TLDR_OLD_PAGES_DIR, TLDR_PAGES_DIR},
-    config::{get_config_dir, make_default_config, Config, ConfigLoader, Language, PathWithSource},
+    config::{
+        get_config_dir, make_default_config, Config, ConfigLoader, Language, PathWithSource,
+        StyleConfig,
+    },
+    formatter::{highlight_lines, PageSnippet},
     output::render_page_to_string,
-    types::{ColorOptions, PlatformType},
+    types::{ColorOptions, LineType, PlatformType},
     utils::{format_error, format_warning},
 };
 
@@ -47,6 +53,8 @@ pub struct RunOutput {
     pub stdout: String,
     pub stderr: String,
     pub warnings: Vec<String>,
+    pub fallback_from: Option<String>,
+    pub fallback_filters: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -57,6 +65,15 @@ pub struct ShowPaths {
     pub pages_dir: Option<String>,
     pub shortcut_pages_dir: Option<String>,
     pub custom_pages_dir: Option<String>,
+}
+
+#[derive(Debug)]
+struct ResolvedPage {
+    lookup: PageLookupResult,
+    resolved_name: String,
+    requested_name: String,
+    filters: Vec<String>,
+    used_fallback: bool,
 }
 
 #[must_use]
@@ -168,7 +185,15 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
     // If a local file was passed in, render it and exit
     if let Some(file) = args.render {
         let path = PageLookupResult::with_page(file);
-        render_page_to_output(output, &path, args.raw, enable_styles, args.pager, &config)?;
+        render_page_to_output(
+            output,
+            &path,
+            args.raw,
+            enable_styles,
+            args.pager,
+            &config,
+            None,
+        )?;
         return Ok(0);
     }
 
@@ -334,7 +359,19 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
             );
         }
 
-        let Some(lookup_result) = cache.find_page(&command) else {
+        let resolved = if shortcut_scope {
+            cache.find_page(&command).map(|lookup| ResolvedPage {
+                lookup,
+                resolved_name: command.clone(),
+                requested_name: command.clone(),
+                filters: Vec::new(),
+                used_fallback: false,
+            })
+        } else {
+            resolve_page_with_fallback(&args.command, &cache)
+        };
+
+        let Some(resolved) = resolved else {
             if !args.quiet {
                 push_warning(
                     output,
@@ -351,13 +388,37 @@ fn run_inner(args: RunArgs, enable_styles: bool, output: &mut RunOutput) -> Resu
             return Ok(1);
         };
 
+        let filters = if resolved.used_fallback && !resolved.filters.is_empty() {
+            Some(resolved.filters.as_slice())
+        } else {
+            None
+        };
+
+        if resolved.used_fallback {
+            output.fallback_from = Some(resolved.requested_name.clone());
+            output.fallback_filters = resolved.filters.clone();
+            if !args.quiet && !resolved.filters.is_empty() {
+                push_warning(
+                    output,
+                    enable_styles,
+                    &format!(
+                        "No page for {}, showing {} (filtered by: {}).",
+                        resolved.requested_name,
+                        resolved.resolved_name,
+                        resolved.filters.join(", ")
+                    ),
+                );
+            }
+        }
+
         render_page_to_output(
             output,
-            &lookup_result,
+            &resolved.lookup,
             args.raw,
             enable_styles,
             args.pager,
             &config,
+            filters,
         )?;
     }
 
@@ -507,7 +568,28 @@ fn render_page_to_output(
     enable_styles: bool,
     use_pager: bool,
     config: &Config,
+    filters: Option<&[String]>,
 ) -> Result<()> {
+    if let Some(filters) = filters {
+        let (rendered, matched_any) = render_filtered_page(
+            lookup_result,
+            enable_markdown,
+            enable_styles,
+            use_pager,
+            config,
+            filters,
+        )?;
+        output.stdout.push_str(&rendered);
+        if !matched_any {
+            push_warning(
+                output,
+                enable_styles,
+                &format!("No examples matched filters: {}", filters.join(", ")),
+            );
+        }
+        return Ok(());
+    }
+
     let mut warn = |message: &str| push_warning(output, enable_styles, message);
     let rendered = render_page_to_string(
         lookup_result,
@@ -519,6 +601,329 @@ fn render_page_to_output(
     )?;
     output.stdout.push_str(&rendered);
     Ok(())
+}
+
+struct LineWithRaw {
+    line_type: LineType,
+    raw_lines: Vec<String>,
+}
+
+fn render_filtered_page(
+    lookup_result: &PageLookupResult,
+    enable_markdown: bool,
+    _enable_styles: bool,
+    use_pager: bool,
+    config: &Config,
+    filters: &[String],
+) -> Result<(String, bool)> {
+    setup_pager_if_needed(use_pager, config);
+    let mut reader = lookup_result.reader()?;
+    let mut content = String::new();
+    reader.read_to_string(&mut content)?;
+
+    let records = collect_lines_with_raw(&content);
+    let (filtered_records, matched_any) = filter_line_records(records, filters);
+
+    if enable_markdown {
+        let mut out = String::new();
+        for record in filtered_records {
+            for line in record.raw_lines {
+                out.push_str(&line);
+                out.push('\n');
+            }
+        }
+        return Ok((out, matched_any));
+    }
+
+    let mut output = Vec::new();
+    let mut process_snippet = |snip: PageSnippet<'_>| {
+        if snip.is_empty() {
+            Ok(())
+        } else {
+            print_snippet(&mut output, snip, &config.style).context("Failed to print snippet")
+        }
+    };
+
+    let line_types = filtered_records
+        .into_iter()
+        .map(|record| record.line_type);
+
+    highlight_lines(
+        line_types,
+        &mut process_snippet,
+        !config.display.compact,
+        config.display.show_title,
+    )
+    .context("Could not write to output")?;
+
+    Ok((String::from_utf8(output).context("Output contained invalid UTF-8")?, matched_any))
+}
+
+fn setup_pager_if_needed(use_pager: bool, config: &Config) {
+    if !(use_pager || config.display.use_pager) {
+        return;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::sync::Once;
+        static INIT: Once = Once::new();
+        INIT.call_once(|| pager::Pager::with_default_pager("less -R").setup());
+    }
+}
+
+fn print_snippet(
+    writer: &mut impl Write,
+    snip: PageSnippet<'_>,
+    style: &StyleConfig,
+) -> std::io::Result<()> {
+    use PageSnippet::*;
+
+    match snip {
+        CommandName(s) => write!(writer, "{}", s.paint(style.command_name)),
+        Variable(s) => write!(writer, "{}", s.paint(style.example_variable)),
+        NormalCode(s) => write!(writer, "{}", s.paint(style.example_code)),
+        Description(s) => writeln!(writer, "  {}", s.paint(style.description)),
+        Text(s) => writeln!(writer, "  {}", s.paint(style.example_text)),
+        Title(s) => writeln!(writer, "  {}", s.paint(style.command_name)),
+        Linebreak => writeln!(writer),
+    }
+}
+
+fn collect_lines_with_raw(content: &str) -> Vec<LineWithRaw> {
+    let lines: Vec<String> = content.lines().map(|line| line.to_string()).collect();
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    let mut records = Vec::new();
+    let is_v1 = lines.first().map(|line| line.starts_with('#')).unwrap_or(false);
+
+    let mut index = 0;
+    if !is_v1 {
+        let title_line = lines[0].clone();
+        let mut raw_lines = vec![title_line.clone()];
+        if lines.len() > 1 {
+            raw_lines.push(lines[1].clone());
+            index = 2;
+        } else {
+            index = 1;
+        }
+        records.push(LineWithRaw {
+            line_type: LineType::Title(title_line.trim_end().to_string()),
+            raw_lines,
+        });
+    }
+
+    for line in lines.into_iter().skip(index) {
+        let line_type = if is_v1 {
+            LineType::from_v1(&line)
+        } else {
+            LineType::from(line.as_str())
+        };
+        records.push(LineWithRaw {
+            line_type,
+            raw_lines: vec![line],
+        });
+    }
+
+    records
+}
+
+fn normalize_for_filter(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.to_lowercase().chars() {
+        if ch == '-' || ch.is_whitespace() {
+            out.push(' ');
+        } else {
+            out.push(ch);
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod fallback_filter_tests {
+    use super::{filter_line_records, normalize_for_filter, resolve_page_with_fallback, LineWithRaw};
+    use crate::{cache::Cache, cache::CacheConfig, config::Language, types::LineType, types::PlatformType};
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn build_record(line_type: LineType, raw: &str) -> LineWithRaw {
+        LineWithRaw {
+            line_type,
+            raw_lines: vec![raw.to_string()],
+        }
+    }
+
+    #[test]
+    fn normalize_for_filter_splits_hyphen_and_space() {
+        assert_eq!(normalize_for_filter("git-checkout"), "git checkout");
+        assert_eq!(normalize_for_filter("git   checkout"), "git checkout");
+    }
+
+    #[test]
+    fn filter_examples_and_matches_description_and_command() {
+        let records = vec![
+            build_record(LineType::Title("systemctl".to_string()), "# systemctl"),
+            build_record(LineType::Description("desc".to_string()), "> desc"),
+            build_record(LineType::ExampleText("Stop a unit".to_string()), "- Stop a unit"),
+            build_record(LineType::ExampleCode("systemctl stop unit".to_string()), "`systemctl stop unit`"),
+            build_record(LineType::ExampleText("Start a unit".to_string()), "- Start a unit"),
+            build_record(LineType::ExampleCode("systemctl start unit".to_string()), "`systemctl start unit`"),
+        ];
+
+        let (filtered, matched) = filter_line_records(records, &["stop".to_string()]);
+        let filtered_text: Vec<String> = filtered
+            .iter()
+            .filter_map(|record| match &record.line_type {
+                LineType::ExampleText(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(matched);
+        assert_eq!(filtered_text, vec!["Stop a unit".to_string()]);
+    }
+
+    #[test]
+    fn filter_examples_handles_empty_result() {
+        let records = vec![
+            build_record(LineType::ExampleText("Start a unit".to_string()), "- Start a unit"),
+            build_record(LineType::ExampleCode("systemctl start unit".to_string()), "`systemctl start unit`"),
+        ];
+
+        let (_filtered, matched) = filter_line_records(records, &["stop".to_string()]);
+        assert!(!matched);
+    }
+
+    #[test]
+    fn resolve_page_with_fallback_uses_first_match() {
+        let dir = tempdir().expect("tempdir");
+        let pages_dir = dir.path().join("pages.en").join("common");
+        fs::create_dir_all(&pages_dir).expect("create pages dir");
+        fs::write(pages_dir.join("systemctl.md"), "# systemctl").expect("write page");
+
+        let config = CacheConfig {
+            pages_directory: dir.path(),
+            custom_pages_directory: None,
+            platforms: &[PlatformType::Common],
+            search_languages: &[Language("en")],
+            download_languages: &[Language("en")],
+        };
+        let cache = Cache::open_or_create(config).expect("cache").0;
+
+        let tokens = vec!["systemctl".to_string(), "stop".to_string()];
+        let resolved = resolve_page_with_fallback(&tokens, &cache).expect("resolved");
+        assert_eq!(resolved.resolved_name, "systemctl");
+        assert_eq!(resolved.filters, vec!["stop".to_string()]);
+        assert!(resolved.used_fallback);
+    }
+}
+
+fn matches_filters(blob: &str, filters: &[String]) -> bool {
+    let normalized_blob = normalize_for_filter(blob);
+    filters.iter().all(|filter| {
+        let normalized_filter = normalize_for_filter(filter);
+        !normalized_filter.is_empty() && normalized_blob.contains(&normalized_filter)
+    })
+}
+
+fn filter_line_records(
+    records: Vec<LineWithRaw>,
+    filters: &[String],
+) -> (Vec<LineWithRaw>, bool) {
+    if filters.is_empty() {
+        return (records, true);
+    }
+
+    let mut output = Vec::new();
+    let mut pending: Option<LineWithRaw> = None;
+    let mut matched_any = false;
+
+    for record in records {
+        match record.line_type {
+            LineType::ExampleText(text) => {
+                if let Some(pending_record) = pending.take() {
+                    output.push(pending_record);
+                }
+                pending = Some(LineWithRaw {
+                    line_type: LineType::ExampleText(text),
+                    raw_lines: record.raw_lines,
+                });
+            }
+            LineType::ExampleCode(code) => {
+                if let Some(pending_record) = pending.take() {
+                    let pending_text = match &pending_record.line_type {
+                        LineType::ExampleText(text) => text.as_str(),
+                        _ => "",
+                    };
+                    let combined = format!("{pending_text} {code}");
+                    if matches_filters(&combined, filters) {
+                        output.push(pending_record);
+                        output.push(LineWithRaw {
+                            line_type: LineType::ExampleCode(code),
+                            raw_lines: record.raw_lines,
+                        });
+                        matched_any = true;
+                    }
+                } else if matches_filters(&code, filters) {
+                    output.push(LineWithRaw {
+                        line_type: LineType::ExampleCode(code),
+                        raw_lines: record.raw_lines,
+                    });
+                    matched_any = true;
+                }
+            }
+            other => {
+                if let Some(pending_record) = pending.take() {
+                    output.push(pending_record);
+                }
+                output.push(LineWithRaw {
+                    line_type: other,
+                    raw_lines: record.raw_lines,
+                });
+            }
+        }
+    }
+
+    if let Some(pending_record) = pending.take() {
+        output.push(pending_record);
+    }
+
+    (output, matched_any)
+}
+
+fn resolve_page_with_fallback(tokens: &[String], cache: &Cache) -> Option<ResolvedPage> {
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let requested_name = tokens.join("-").to_lowercase();
+    for cut in (1..=tokens.len()).rev() {
+        let candidate = tokens[..cut].join("-").to_lowercase();
+        if let Some(lookup) = cache.find_page(&candidate) {
+            let used_fallback = candidate != requested_name;
+            let filters = if used_fallback {
+                tokens[cut..]
+                    .iter()
+                    .map(|token| token.to_lowercase())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            return Some(ResolvedPage {
+                lookup,
+                resolved_name: candidate,
+                requested_name: requested_name.clone(),
+                filters,
+                used_fallback,
+            });
+        }
+    }
+
+    None
 }
 
 fn push_stdout_line(output: &mut RunOutput, line: &str) {
@@ -550,6 +955,7 @@ mod tests {
     use super::*;
     use crate::types::PageScope;
     use std::fs;
+    use std::path::Path;
 
     use tempfile::tempdir;
 
@@ -576,6 +982,98 @@ mod tests {
             enable_styles: None,
             stdout_is_tty: false,
         }
+    }
+
+    fn write_test_config(dir: &Path) -> PathBuf {
+        let config_path = dir.join("config.toml");
+        let cache_dir = dir.join("cache");
+        let custom_pages_dir = dir.join("custom_pages");
+        let shortcut_pages_dir = dir.join("shortcut_pages");
+
+        let config = format!(
+            r#"
+[directories]
+cache_dir = "{cache_dir}"
+custom_pages_dir = "{custom_pages_dir}"
+shortcut_pages_dir = "{shortcut_pages_dir}"
+
+[search]
+languages = ["en"]
+platforms = ["common"]
+"#,
+            cache_dir = cache_dir.to_string_lossy().replace('\\', "\\\\"),
+            custom_pages_dir = custom_pages_dir.to_string_lossy().replace('\\', "\\\\"),
+            shortcut_pages_dir = shortcut_pages_dir.to_string_lossy().replace('\\', "\\\\"),
+        );
+
+        fs::write(&config_path, config).unwrap();
+        config_path
+    }
+
+    fn write_page(dir: &Path, name: &str, content: &str) {
+        let pages_dir = dir.join("cache").join("tldr-pages").join("pages.en").join("common");
+        fs::create_dir_all(&pages_dir).unwrap();
+        fs::write(pages_dir.join(format!("{name}.md")), content).unwrap();
+    }
+
+    #[test]
+    fn run_fallback_filters_examples_for_common_commands() {
+        let dir = tempdir().unwrap();
+        let config_path = write_test_config(dir.path());
+
+        write_page(
+            dir.path(),
+            "systemctl",
+            "# systemctl\n> desc\n\n- Stop a unit:\n`systemctl stop unit`\n\n- Start a unit:\n`systemctl start unit`\n",
+        );
+        write_page(
+            dir.path(),
+            "git",
+            "# git\n> desc\n\n- Checkout a branch:\n`git checkout branch`\n\n- Show status:\n`git status`\n",
+        );
+        write_page(
+            dir.path(),
+            "docker",
+            "# docker\n> desc\n\n- Run a container:\n`docker run image`\n\n- List images:\n`docker images`\n",
+        );
+
+        let mut args = base_args(config_path.clone());
+        args.raw = true;
+
+        args.command = vec!["systemctl".into(), "stop".into()];
+        let output = run(args.clone()).unwrap();
+        assert_eq!(output.fallback_from.as_deref(), Some("systemctl-stop"));
+        assert_eq!(output.fallback_filters, vec!["stop"]);
+        assert!(output.stdout.contains("systemctl stop unit"));
+        assert!(!output.stdout.contains("systemctl start unit"));
+
+        args.command = vec!["git".into(), "checkout".into()];
+        let output = run(args.clone()).unwrap();
+        assert_eq!(output.fallback_from.as_deref(), Some("git-checkout"));
+        assert!(output.stdout.contains("git checkout branch"));
+        assert!(!output.stdout.contains("git status"));
+
+        args.command = vec!["docker".into(), "run".into()];
+        let output = run(args).unwrap();
+        assert_eq!(output.fallback_from.as_deref(), Some("docker-run"));
+        assert!(output.stdout.contains("docker run image"));
+        assert!(!output.stdout.contains("docker images"));
+    }
+
+    #[test]
+    fn shortcut_scope_does_not_use_fallback() {
+        let dir = tempdir().unwrap();
+        let config_path = write_test_config(dir.path());
+
+        let mut args = base_args(config_path);
+        args.scope = PageScope::Shortcut;
+        args.command = vec!["systemctl".into(), "stop".into()];
+        args.raw = true;
+
+        let output = run(args).unwrap();
+        assert_eq!(output.exit_code, 1);
+        assert!(output.fallback_from.is_none());
+        assert!(output.fallback_filters.is_empty());
     }
 
     #[test]
